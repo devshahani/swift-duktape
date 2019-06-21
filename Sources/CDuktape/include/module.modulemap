@@ -1,0 +1,4 @@
+module Duktape [system] {
+    header "../CDuktape/duktape.h"
+    export *
+}
