@@ -2,7 +2,6 @@
 /.build
 /Packages
 /*.xcodeproj
-/Upstream
 *.xz
 /Sources/CDuktape/CDuktape.c
 /Sources/CDuktape/duk_config.h
