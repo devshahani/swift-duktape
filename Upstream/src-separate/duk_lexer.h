@@ -2,7 +2,7 @@
  *  Lexer defines.
  */
 
-#if !defined(DUK_LEXER_H_INCLUDED)
+#ifndef DUK_LEXER_H_INCLUDED
 #define DUK_LEXER_H_INCLUDED
 
 typedef void (*duk_re_range_callback)(void *user, duk_codepoint_t r1, duk_codepoint_t r2, duk_bool_t direct);
@@ -30,9 +30,10 @@ typedef void (*duk_re_range_callback)(void *user, duk_codepoint_t r1, duk_codepo
 
 #define DUK_LEXER_SETPOINT(ctx,pt)    duk_lexer_setpoint((ctx), (pt))
 
-#define DUK_LEXER_GETPOINT(ctx,pt)    duk_lexer_getpoint((ctx), (pt))
+#define DUK_LEXER_GETPOINT(ctx,pt)    do { (pt)->offset = (ctx)->window[0].offset; \
+                                           (pt)->line = (ctx)->window[0].line; } while (0)
 
-/* Currently 6 characters of lookup are actually needed (duk_lexer.c). */
+/* currently 6 characters of lookup are actually needed (duk_lexer.c) */
 #define DUK_LEXER_WINDOW_SIZE                     6
 #if defined(DUK_USE_LEXER_SLIDING_WINDOW)
 #define DUK_LEXER_BUFFER_SIZE                     64
@@ -134,45 +135,41 @@ typedef void (*duk_re_range_callback)(void *user, duk_codepoint_t r1, duk_codepo
 #define DUK_TOK_MUL                               68
 #define DUK_TOK_DIV                               69
 #define DUK_TOK_MOD                               70
-#define DUK_TOK_EXP                               71
-#define DUK_TOK_INCREMENT                         72
-#define DUK_TOK_DECREMENT                         73
-#define DUK_TOK_ALSHIFT                           74   /* named "arithmetic" because result is signed */
-#define DUK_TOK_ARSHIFT                           75
-#define DUK_TOK_RSHIFT                            76
-#define DUK_TOK_BAND                              77
-#define DUK_TOK_BOR                               78
-#define DUK_TOK_BXOR                              79
-#define DUK_TOK_LNOT                              80
-#define DUK_TOK_BNOT                              81
-#define DUK_TOK_LAND                              82
-#define DUK_TOK_LOR                               83
-#define DUK_TOK_QUESTION                          84
-#define DUK_TOK_COLON                             85
-#define DUK_TOK_EQUALSIGN                         86
-#define DUK_TOK_ADD_EQ                            87
-#define DUK_TOK_SUB_EQ                            88
-#define DUK_TOK_MUL_EQ                            89
-#define DUK_TOK_DIV_EQ                            90
-#define DUK_TOK_MOD_EQ                            91
-#define DUK_TOK_EXP_EQ                            92
-#define DUK_TOK_ALSHIFT_EQ                        93
-#define DUK_TOK_ARSHIFT_EQ                        94
-#define DUK_TOK_RSHIFT_EQ                         95
-#define DUK_TOK_BAND_EQ                           96
-#define DUK_TOK_BOR_EQ                            97
-#define DUK_TOK_BXOR_EQ                           98
+#define DUK_TOK_INCREMENT                         71
+#define DUK_TOK_DECREMENT                         72
+#define DUK_TOK_ALSHIFT                           73  /* named "arithmetic" because result is signed */
+#define DUK_TOK_ARSHIFT                           74
+#define DUK_TOK_RSHIFT                            75
+#define DUK_TOK_BAND                              76
+#define DUK_TOK_BOR                               77
+#define DUK_TOK_BXOR                              78
+#define DUK_TOK_LNOT                              79
+#define DUK_TOK_BNOT                              80
+#define DUK_TOK_LAND                              81
+#define DUK_TOK_LOR                               82
+#define DUK_TOK_QUESTION                          83
+#define DUK_TOK_COLON                             84
+#define DUK_TOK_EQUALSIGN                         85
+#define DUK_TOK_ADD_EQ                            86
+#define DUK_TOK_SUB_EQ                            87
+#define DUK_TOK_MUL_EQ                            88
+#define DUK_TOK_DIV_EQ                            89
+#define DUK_TOK_MOD_EQ                            90
+#define DUK_TOK_ALSHIFT_EQ                        91
+#define DUK_TOK_ARSHIFT_EQ                        92
+#define DUK_TOK_RSHIFT_EQ                         93
+#define DUK_TOK_BAND_EQ                           94
+#define DUK_TOK_BOR_EQ                            95
+#define DUK_TOK_BXOR_EQ                           96
 
 /* literals (E5 Section 7.8), except null, true, false, which are treated
  * like reserved words (above).
  */
-#define DUK_TOK_NUMBER                            99
-#define DUK_TOK_STRING                            100
-#define DUK_TOK_REGEXP                            101
+#define DUK_TOK_NUMBER                            97
+#define DUK_TOK_STRING                            98
+#define DUK_TOK_REGEXP                            99
 
-#define DUK_TOK_MAXVAL                            101  /* inclusive */
-
-#define DUK_TOK_INVALID                           DUK_SMALL_UINT_MAX
+#define DUK_TOK_MAXVAL                            99  /* inclusive */
 
 /* Convert heap string index to a token (reserved words) */
 #define DUK_STRIDX_TO_TOK(x)                        ((x) - DUK_STRIDX_START_RESERVED + DUK_TOK_START_RESERVED)
@@ -331,12 +328,12 @@ typedef void (*duk_re_range_callback)(void *user, duk_codepoint_t r1, duk_codepo
 #define DUK_RETOK_ASSERT_START_NEG_LOOKAHEAD       8
 #define DUK_RETOK_ATOM_PERIOD                      9
 #define DUK_RETOK_ATOM_CHAR                        10
-#define DUK_RETOK_ATOM_DIGIT                       11  /* assumptions in regexp compiler */
-#define DUK_RETOK_ATOM_NOT_DIGIT                   12  /* -""- */
-#define DUK_RETOK_ATOM_WHITE                       13  /* -""- */
-#define DUK_RETOK_ATOM_NOT_WHITE                   14  /* -""- */
-#define DUK_RETOK_ATOM_WORD_CHAR                   15  /* -""- */
-#define DUK_RETOK_ATOM_NOT_WORD_CHAR               16  /* -""- */
+#define DUK_RETOK_ATOM_DIGIT                       11
+#define DUK_RETOK_ATOM_NOT_DIGIT                   12
+#define DUK_RETOK_ATOM_WHITE                       13
+#define DUK_RETOK_ATOM_NOT_WHITE                   14
+#define DUK_RETOK_ATOM_WORD_CHAR                   15
+#define DUK_RETOK_ATOM_NOT_WORD_CHAR               16
 #define DUK_RETOK_ATOM_BACKREFERENCE               17
 #define DUK_RETOK_ATOM_START_CAPTURE_GROUP         18
 #define DUK_RETOK_ATOM_START_NONCAPTURE_GROUP      19
@@ -352,8 +349,8 @@ typedef void (*duk_re_range_callback)(void *user, duk_codepoint_t r1, duk_codepo
  * stale values otherwise.
  */
 struct duk_token {
-	duk_small_uint_t t;           /* token type (with reserved word identification) */
-	duk_small_uint_t t_nores;     /* token type (with reserved words as DUK_TOK_IDENTIFER) */
+	duk_small_int_t t;            /* token type (with reserved word identification) */
+	duk_small_int_t t_nores;      /* token type (with reserved words as DUK_TOK_IDENTIFER) */
 	duk_double_t num;             /* numeric value of token */
 	duk_hstring *str1;            /* string 1 of token (borrowed, stored to ctx->slot1_idx) */
 	duk_hstring *str2;            /* string 2 of token (borrowed, stored to ctx->slot2_idx) */
@@ -368,11 +365,11 @@ struct duk_token {
 
 /* A regexp token value. */
 struct duk_re_token {
-	duk_small_uint_t t;          /* token type */
-	duk_small_uint_t greedy;
-	duk_uint32_t num;            /* numeric value (character, count) */
-	duk_uint32_t qmin;
-	duk_uint32_t qmax;
+	duk_small_int_t t;           /* token type */
+	duk_small_int_t greedy;
+	duk_uint_fast32_t num;       /* numeric value (character, count) */
+	duk_uint_fast32_t qmin;
+	duk_uint_fast32_t qmax;
 };
 
 /* A structure for 'snapshotting' a point for rewinding */
@@ -388,7 +385,7 @@ struct duk_lexer_codepoint {
 	duk_int_t line;
 };
 
-/* Lexer context.  Same context is used for ECMAScript and Regexp parsing. */
+/* Lexer context.  Same context is used for Ecmascript and Regexp parsing. */
 struct duk_lexer_ctx {
 #if defined(DUK_USE_LEXER_SLIDING_WINDOW)
 	duk_lexer_codepoint *window; /* unicode code points, window[0] is always next, points to 'buffer' */
@@ -412,8 +409,6 @@ struct duk_lexer_ctx {
 
 	duk_int_t token_count;                         /* number of tokens parsed */
 	duk_int_t token_limit;                         /* maximum token count before error (sanity backstop) */
-
-	duk_small_uint_t flags;                        /* lexer flags, use compiler flag defines for now */
 };
 
 /*
@@ -422,7 +417,6 @@ struct duk_lexer_ctx {
 
 DUK_INTERNAL_DECL void duk_lexer_initctx(duk_lexer_ctx *lex_ctx);
 
-DUK_INTERNAL_DECL void duk_lexer_getpoint(duk_lexer_ctx *lex_ctx, duk_lexer_point *pt);
 DUK_INTERNAL_DECL void duk_lexer_setpoint(duk_lexer_ctx *lex_ctx, duk_lexer_point *pt);
 
 DUK_INTERNAL_DECL
@@ -430,7 +424,7 @@ void duk_lexer_parse_js_input_element(duk_lexer_ctx *lex_ctx,
                                       duk_token *out_token,
                                       duk_bool_t strict_mode,
                                       duk_bool_t regexp_mode);
-#if defined(DUK_USE_REGEXP_SUPPORT)
+#ifdef DUK_USE_REGEXP_SUPPORT
 DUK_INTERNAL_DECL void duk_lexer_parse_re_token(duk_lexer_ctx *lex_ctx, duk_re_token *out_token);
 DUK_INTERNAL_DECL void duk_lexer_parse_re_ranges(duk_lexer_ctx *lex_ctx, duk_re_range_callback gen_range, void *userdata);
 #endif  /* DUK_USE_REGEXP_SUPPORT */

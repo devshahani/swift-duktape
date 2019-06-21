@@ -2,7 +2,7 @@
  *  Regular expression structs, constants, and bytecode defines.
  */
 
-#if !defined(DUK_REGEXP_H_INCLUDED)
+#ifndef DUK_REGEXP_H_INCLUDED
 #define DUK_REGEXP_H_INCLUDED
 
 /* maximum bytecode copies for {n,m} quantifiers */
@@ -36,9 +36,9 @@
 #define DUK_REOP_ASSERT_NOT_WORD_BOUNDARY  19
 
 /* flags */
-#define DUK_RE_FLAG_GLOBAL                 (1U << 0)
-#define DUK_RE_FLAG_IGNORE_CASE            (1U << 1)
-#define DUK_RE_FLAG_MULTILINE              (1U << 2)
+#define DUK_RE_FLAG_GLOBAL                 (1 << 0)
+#define DUK_RE_FLAG_IGNORE_CASE            (1 << 1)
+#define DUK_RE_FLAG_MULTILINE              (1 << 2)
 
 struct duk_re_matcher_ctx {
 	duk_hthread *thr;
@@ -74,11 +74,9 @@ struct duk_re_compiler_ctx {
  *  Prototypes
  */
 
-#if defined(DUK_USE_REGEXP_SUPPORT)
 DUK_INTERNAL_DECL void duk_regexp_compile(duk_hthread *thr);
 DUK_INTERNAL_DECL void duk_regexp_create_instance(duk_hthread *thr);
 DUK_INTERNAL_DECL void duk_regexp_match(duk_hthread *thr);
 DUK_INTERNAL_DECL void duk_regexp_match_force_global(duk_hthread *thr);  /* hacky helper for String.prototype.split() */
-#endif
 
 #endif  /* DUK_REGEXP_H_INCLUDED */

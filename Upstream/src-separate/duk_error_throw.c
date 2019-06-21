@@ -1,8 +1,8 @@
 /*
- *  Create and throw an ECMAScript error object based on a code and a message.
+ *  Create and throw an Ecmascript error object based on a code and a message.
  *
- *  Used when we throw errors internally.  ECMAScript generated error objects
- *  are created by ECMAScript code, and the throwing is handled by the bytecode
+ *  Used when we throw errors internally.  Ecmascript generated error objects
+ *  are created by Ecmascript code, and the throwing is handled by the bytecode
  *  executor.
  */
 
@@ -16,16 +16,19 @@
  *
  *  If an error occurs while we're dealing with the current error, we might
  *  enter an infinite recursion loop.  This is prevented by detecting a
- *  "double fault" through the heap->creating_error flag; the recursion
+ *  "double fault" through the heap->handling_error flag; the recursion
  *  then stops at the second level.
  */
 
-#if defined(DUK_USE_VERBOSE_ERRORS)
+#ifdef DUK_USE_VERBOSE_ERRORS
 DUK_INTERNAL void duk_err_create_and_throw(duk_hthread *thr, duk_errcode_t code, const char *msg, const char *filename, duk_int_t line) {
 #else
 DUK_INTERNAL void duk_err_create_and_throw(duk_hthread *thr, duk_errcode_t code) {
 #endif
-#if defined(DUK_USE_VERBOSE_ERRORS)
+	duk_context *ctx = (duk_context *) thr;
+	duk_bool_t double_error = thr->heap->handling_error;
+
+#ifdef DUK_USE_VERBOSE_ERRORS
 	DUK_DD(DUK_DDPRINT("duk_err_create_and_throw(): code=%ld, msg=%s, filename=%s, line=%ld",
 	                   (long) code, (const char *) msg,
 	                   (const char *) filename, (long) line));
@@ -34,12 +37,20 @@ DUK_INTERNAL void duk_err_create_and_throw(duk_hthread *thr, duk_errcode_t code)
 #endif
 
 	DUK_ASSERT(thr != NULL);
+	DUK_ASSERT(ctx != NULL);
 
-	/* Even though nested call is possible because we throw an error when
-	 * trying to create an error, the potential errors must happen before
-	 * the longjmp state is configured.
-	 */
-	DUK_ASSERT_LJSTATE_UNSET(thr->heap);
+	thr->heap->handling_error = 1;
+
+	if (!double_error) {
+		/* Allow headroom for calls during error handling (see GH-191).
+		 * We allow space for 10 additional recursions, with one extra
+		 * for, e.g. a print() call at the deepest level.
+		 */
+		DUK_ASSERT(thr->callstack_max == DUK_CALLSTACK_DEFAULT_MAX);
+		thr->callstack_max = DUK_CALLSTACK_DEFAULT_MAX + DUK_CALLSTACK_GROW_STEP + 11;
+	}
+
+	DUK_ASSERT(thr->callstack_max == DUK_CALLSTACK_DEFAULT_MAX + DUK_CALLSTACK_GROW_STEP + 11);  /* just making sure */
 
 	/* Sync so that augmentation sees up-to-date activations, NULL
 	 * thr->ptr_curr_pc so that it's not used if side effects occur
@@ -49,88 +60,68 @@ DUK_INTERNAL void duk_err_create_and_throw(duk_hthread *thr, duk_errcode_t code)
 
 	/*
 	 *  Create and push an error object onto the top of stack.
-	 *  The error is potentially augmented before throwing.
-	 *
 	 *  If a "double error" occurs, use a fixed error instance
 	 *  to avoid further trouble.
 	 */
 
-	if (thr->heap->creating_error) {
-		duk_tval tv_val;
-		duk_hobject *h_err;
+	/* XXX: if attempt to push beyond allocated valstack, this double fault
+	 * handling fails miserably.  We should really write the double error
+	 * directly to thr->heap->lj.value1 and avoid valstack use entirely.
+	 */
 
-		thr->heap->creating_error = 0;
-
-		h_err = thr->builtins[DUK_BIDX_DOUBLE_ERROR];
-		if (h_err != NULL) {
-			DUK_D(DUK_DPRINT("double fault detected -> use built-in fixed 'double error' instance"));
-			DUK_TVAL_SET_OBJECT(&tv_val, h_err);
+	if (double_error) {
+		if (thr->builtins[DUK_BIDX_DOUBLE_ERROR]) {
+			DUK_D(DUK_DPRINT("double fault detected -> push built-in fixed 'double error' instance"));
+			duk_push_hobject_bidx(ctx, DUK_BIDX_DOUBLE_ERROR);
 		} else {
 			DUK_D(DUK_DPRINT("double fault detected; there is no built-in fixed 'double error' instance "
-			                 "-> use the error code as a number"));
-			DUK_TVAL_SET_I32(&tv_val, (duk_int32_t) code);
+			                 "-> push the error code as a number"));
+			duk_push_int(ctx, (duk_int_t) code);
 		}
-
-		duk_err_setup_ljstate1(thr, DUK_LJ_TYPE_THROW, &tv_val);
-
-		/* No augmentation to avoid any allocations or side effects. */
 	} else {
-		/* Prevent infinite recursion.  Extra call stack and C
-		 * recursion headroom (see GH-191) is added for augmentation.
-		 * That is now signalled by heap->augmenting error and taken
-		 * into account in call handling without an explicit limit bump.
+		/* Error object is augmented at its creation here. */
+		duk_require_stack(ctx, 1);
+		/* XXX: unnecessary '%s' formatting here, but cannot use
+		 * 'msg' as a format string directly.
 		 */
-		thr->heap->creating_error = 1;
-
-		duk_require_stack(thr, 1);
-
-		/* XXX: usually unnecessary '%s' formatting here, but cannot
-		 * use 'msg' as a format string directly.
-		 */
-#if defined(DUK_USE_VERBOSE_ERRORS)
-		duk_push_error_object_raw(thr,
+#ifdef DUK_USE_VERBOSE_ERRORS
+		duk_push_error_object_raw(ctx,
 		                          code | DUK_ERRCODE_FLAG_NOBLAME_FILELINE,
 		                          filename,
 		                          line,
 		                          "%s",
 		                          (const char *) msg);
 #else
-		duk_push_error_object_raw(thr,
+		duk_push_error_object_raw(ctx,
 		                          code | DUK_ERRCODE_FLAG_NOBLAME_FILELINE,
 		                          NULL,
 		                          0,
 		                          NULL);
 #endif
+	}
 
-		/* Note that an alloc error may happen during error augmentation.
-		 * This may happen both when the original error is an alloc error
-		 * and when it's something else.  Because any error in augmentation
-		 * must be handled correctly anyway, there's no special check for
-		 * avoiding it for alloc errors (this differs from Duktape 1.x).
-		 */
+	/*
+	 *  Augment error (throw time), unless alloc/double error
+	 */
+
+	if (double_error || code == DUK_ERR_ALLOC_ERROR) {
+		DUK_D(DUK_DPRINT("alloc or double error: skip throw augmenting to avoid further trouble"));
+	} else {
 #if defined(DUK_USE_AUGMENT_ERROR_THROW)
 		DUK_DDD(DUK_DDDPRINT("THROW ERROR (INTERNAL): %!iT (before throw augment)",
-		                     (duk_tval *) duk_get_tval(thr, -1)));
+		                     (duk_tval *) duk_get_tval(ctx, -1)));
 		duk_err_augment_error_throw(thr);
-#endif
-
-		duk_err_setup_ljstate1(thr, DUK_LJ_TYPE_THROW, DUK_GET_TVAL_NEGIDX(thr, -1));
-		thr->heap->creating_error = 0;
-
-		/* Error is now created and we assume no errors can occur any
-		 * more.  Check for debugger Throw integration only when the
-		 * error is complete.  If we enter debugger message loop,
-		 * creating_error must be 0 so that errors can be thrown in
-		 * the paused state, e.g. in Eval commands.
-		 */
-#if defined(DUK_USE_DEBUGGER_SUPPORT)
-		duk_err_check_debugger_integration(thr);
 #endif
 	}
 
 	/*
 	 *  Finally, longjmp
 	 */
+
+	duk_err_setup_heap_ljstate(thr, DUK_LJ_TYPE_THROW);
+
+	thr->callstack_max = DUK_CALLSTACK_DEFAULT_MAX;  /* reset callstack limit */
+	thr->heap->handling_error = 0;
 
 	DUK_DDD(DUK_DDDPRINT("THROW ERROR (INTERNAL): %!iT, %!iT (after throw augment)",
 	                     (duk_tval *) &thr->heap->lj.value1, (duk_tval *) &thr->heap->lj.value2));
@@ -144,19 +135,47 @@ DUK_INTERNAL void duk_err_create_and_throw(duk_hthread *thr, duk_errcode_t code)
  */
 
 DUK_INTERNAL void duk_error_throw_from_negative_rc(duk_hthread *thr, duk_ret_t rc) {
+	duk_context *ctx = (duk_context *) thr;
+	const char *msg;
+	duk_errcode_t code;
+
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(rc < 0);
+
+	/* XXX: this generates quite large code - perhaps select the error
+	 * class based on the code and then just use the error 'name'?
+	 */
+	/* XXX: shared strings */
+
+	code = -rc;
+
+	switch (rc) {
+	case DUK_RET_UNIMPLEMENTED_ERROR:  msg = "unimplemented"; break;
+	case DUK_RET_UNSUPPORTED_ERROR:    msg = "unsupported"; break;
+	case DUK_RET_INTERNAL_ERROR:       msg = "internal"; break;
+	case DUK_RET_ALLOC_ERROR:          msg = "alloc"; break;
+	case DUK_RET_ASSERTION_ERROR:      msg = "assertion"; break;
+	case DUK_RET_API_ERROR:            msg = "api"; break;
+	case DUK_RET_UNCAUGHT_ERROR:       msg = "uncaught"; break;
+	case DUK_RET_ERROR:                msg = "error"; break;
+	case DUK_RET_EVAL_ERROR:           msg = "eval"; break;
+	case DUK_RET_RANGE_ERROR:          msg = "range"; break;
+	case DUK_RET_REFERENCE_ERROR:      msg = "reference"; break;
+	case DUK_RET_SYNTAX_ERROR:         msg = "syntax"; break;
+	case DUK_RET_TYPE_ERROR:           msg = "type"; break;
+	case DUK_RET_URI_ERROR:            msg = "uri"; break;
+	default:                           msg = "unknown"; break;
+	}
+
+	DUK_ASSERT(msg != NULL);
 
 	/*
 	 *  The __FILE__ and __LINE__ information is intentionally not used in the
 	 *  creation of the error object, as it isn't useful in the tracedata.  The
 	 *  tracedata still contains the function which returned the negative return
 	 *  code, and having the file/line of this function isn't very useful.
-	 *
-	 *  The error messages for DUK_RET_xxx shorthand are intentionally very
-	 *  minimal: they're only really useful for low memory targets.
 	 */
 
-	duk_error_raw(thr, -rc, NULL, 0, "error (rc %ld)", (long) rc);
-	DUK_WO_NORETURN(return;);
+	duk_error_raw(ctx, code, NULL, 0, "%s error (rc %ld)", (const char *) msg, (long) rc);
+	DUK_UNREACHABLE();
 }

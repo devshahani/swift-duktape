@@ -1,22 +1,22 @@
 # Must match C header.
 class_names:
-  - none
-  - Object
-  - Array
-  - Function
+  - unused
   - Arguments
+  - Array
   - Boolean
   - Date
   - Error
+  - Function
   - JSON
   - Math
   - Number
+  - Object
   - RegExp
   - String
   - global
-  - Symbol
   - ObjEnv
   - DecEnv
+  - Buffer
   - Pointer
   - Thread
   - ArrayBuffer

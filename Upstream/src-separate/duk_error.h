@@ -1,27 +1,26 @@
 /*
  *  Error handling macros, assertion macro, error codes.
  *
- *  There are three types of 'errors':
+ *  There are three level of 'errors':
  *
- *    1. Ordinary errors relative to a thread, cause a longjmp, catchable.
- *    2. Fatal errors relative to a heap, cause fatal handler to be called.
- *    3. Fatal errors without context, cause the default (not heap specific)
- *       fatal handler to be called.
+ *    1. Ordinary errors, relative to a thread, cause a longjmp, catchable.
+ *    2. Fatal errors, relative to a heap, cause fatal handler to be called.
+ *    3. Panic errors, unrelated to a heap and cause a process exit.
  *
- *  Fatal errors without context are used by debug code such as assertions.
- *  By providing a fatal error handler for a Duktape heap, user code can
- *  avoid fatal errors without context in non-debug builds.
+ *  Panics are used by the default fatal error handler and by debug code
+ *  such as assertions.  By providing a proper fatal error handler, user
+ *  code can avoid panics in non-debug builds.
  */
 
-#if !defined(DUK_ERROR_H_INCLUDED)
+#ifndef DUK_ERROR_H_INCLUDED
 #define DUK_ERROR_H_INCLUDED
 
 /*
  *  Error codes: defined in duktape.h
  *
  *  Error codes are used as a shorthand to throw exceptions from inside
- *  the implementation.  The appropriate ECMAScript object is constructed
- *  based on the code.  ECMAScript code throws objects directly.  The error
+ *  the implementation.  The appropriate Ecmascript object is constructed
+ *  based on the code.  Ecmascript code throws objects directly.  The error
  *  codes are defined in the public API header because they are also used
  *  by calling code.
  */
@@ -128,247 +127,66 @@
 #endif  /* DUK_USE_VERBOSE_ERRORS */
 
 /*
- *  Fatal error without context
+ *  Fatal error
  *
- *  The macro is an expression to make it compatible with DUK_ASSERT_EXPR().
+ *  There are no fatal error macros at the moment.  There are so few call
+ *  sites that the fatal error handler is called directly.
  */
-
-#define DUK_FATAL_WITHOUT_CONTEXT(msg) \
-	duk_default_fatal_handler(NULL, (msg))
 
 /*
- *  Error throwing helpers
+ *  Panic error
  *
- *  The goal is to provide verbose and configurable error messages.  Call
- *  sites should be clean in source code and compile to a small footprint.
- *  Small footprint is also useful for performance because small cold paths
- *  reduce code cache pressure.  Adding macros here only makes sense if there
- *  are enough call sites to get concrete benefits.
+ *  Panic errors are not relative to either a heap or a thread, and cause
+ *  DUK_PANIC() macro to be invoked.  Unless a user provides DUK_USE_PANIC_HANDLER,
+ *  DUK_PANIC() calls a helper which prints out the error and causes a process
+ *  exit.
  *
- *  DUK_ERROR_xxx() macros are generic and can be used anywhere.
+ *  The user can override the macro to provide custom handling.  A macro is
+ *  used to allow the user to have inline panic handling if desired (without
+ *  causing a potentially risky function call).
  *
- *  DUK_DCERROR_xxx() macros can only be used in Duktape/C functions where
- *  the "return DUK_RET_xxx;" shorthand is available for low memory targets.
- *  The DUK_DCERROR_xxx() macros always either throw or perform a
- *  'return DUK_RET_xxx' from the calling function.
+ *  Panics are only used in debug code such as assertions, and by the default
+ *  fatal error handler.
  */
 
-#if defined(DUK_USE_VERBOSE_ERRORS)
-/* Verbose errors with key/value summaries (non-paranoid) or without key/value
- * summaries (paranoid, for some security sensitive environments), the paranoid
- * vs. non-paranoid distinction affects only a few specific errors.
- */
-#if defined(DUK_USE_PARANOID_ERRORS)
-#define DUK_ERROR_REQUIRE_TYPE_INDEX(thr,idx,expectname,lowmemstr) do { \
-		duk_err_require_type_index((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (idx), (expectname)); \
-	} while (0)
-#else  /* DUK_USE_PARANOID_ERRORS */
-#define DUK_ERROR_REQUIRE_TYPE_INDEX(thr,idx,expectname,lowmemstr) do { \
-		duk_err_require_type_index((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (idx), (expectname)); \
-	} while (0)
-#endif  /* DUK_USE_PARANOID_ERRORS */
-
-#define DUK_ERROR_INTERNAL(thr) do { \
-		duk_err_error_internal((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
-	} while (0)
-#define DUK_DCERROR_INTERNAL(thr) do { \
-		DUK_ERROR_INTERNAL((thr)); \
-		return 0; \
-	} while (0)
-#define DUK_ERROR_ALLOC_FAILED(thr) do { \
-		duk_err_error_alloc_failed((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
-	} while (0)
-#define DUK_ERROR_UNSUPPORTED(thr) do { \
-		DUK_ERROR((thr), DUK_ERR_ERROR, DUK_STR_UNSUPPORTED); \
-	} while (0)
-#define DUK_ERROR_ERROR(thr,msg) do { \
-		duk_err_error((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (msg)); \
-	} while (0)
-#define DUK_ERROR_RANGE_INDEX(thr,idx) do { \
-		duk_err_range_index((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (idx)); \
-	} while (0)
-#define DUK_ERROR_RANGE_PUSH_BEYOND(thr) do { \
-		duk_err_range_push_beyond((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
-	} while (0)
-#define DUK_ERROR_RANGE_INVALID_ARGS(thr) do { \
-		DUK_ERROR_RANGE((thr), DUK_STR_INVALID_ARGS); \
-	} while (0)
-#define DUK_DCERROR_RANGE_INVALID_ARGS(thr) do { \
-		DUK_ERROR_RANGE_INVALID_ARGS((thr)); \
-		return 0; \
-	} while (0)
-#define DUK_ERROR_RANGE_INVALID_COUNT(thr) do { \
-		DUK_ERROR_RANGE((thr), DUK_STR_INVALID_COUNT); \
-	} while (0)
-#define DUK_DCERROR_RANGE_INVALID_COUNT(thr) do { \
-		DUK_ERROR_RANGE_INVALID_COUNT((thr)); \
-		return 0; \
-	} while (0)
-#define DUK_ERROR_RANGE_INVALID_LENGTH(thr) do { \
-		DUK_ERROR_RANGE((thr), DUK_STR_INVALID_LENGTH); \
-	} while (0)
-#define DUK_DCERROR_RANGE_INVALID_LENGTH(thr) do { \
-		DUK_ERROR_RANGE_INVALID_LENGTH((thr)); \
-		return 0; \
-	} while (0)
-#define DUK_ERROR_RANGE(thr,msg) do { \
-		duk_err_range((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (msg)); \
-	} while (0)
-#define DUK_ERROR_EVAL(thr,msg) do { \
-		DUK_ERROR((thr), DUK_ERR_EVAL_ERROR, (msg)); \
-	} while (0)
-#define DUK_ERROR_REFERENCE(thr,msg) do { \
-		DUK_ERROR((thr), DUK_ERR_REFERENCE_ERROR, (msg)); \
-	} while (0)
-#define DUK_ERROR_SYNTAX(thr,msg) do { \
-		DUK_ERROR((thr), DUK_ERR_SYNTAX_ERROR, (msg)); \
-	} while (0)
-#define DUK_ERROR_TYPE_INVALID_ARGS(thr) do { \
-		duk_err_type_invalid_args((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
-	} while (0)
-#define DUK_DCERROR_TYPE_INVALID_ARGS(thr) do { \
-		DUK_ERROR_TYPE_INVALID_ARGS((thr)); \
-		return 0; \
-	} while (0)
-#define DUK_ERROR_TYPE_INVALID_STATE(thr) do { \
-		duk_err_type_invalid_state((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
-	} while (0)
-#define DUK_DCERROR_TYPE_INVALID_STATE(thr) do { \
-		DUK_ERROR_TYPE_INVALID_STATE((thr)); \
-		return 0; \
-	} while (0)
-#define DUK_ERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
-		duk_err_type_invalid_trap_result((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
-	} while (0)
-#define DUK_DCERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
-		DUK_ERROR_TYPE((thr), DUK_STR_INVALID_TRAP_RESULT); \
-	} while (0)
-#define DUK_ERROR_TYPE(thr,msg) do { \
-		DUK_ERROR((thr), DUK_ERR_TYPE_ERROR, (msg)); \
-	} while (0)
-#define DUK_ERROR_URI(thr,msg) do { \
-		DUK_ERROR((thr), DUK_ERR_URI_ERROR, (msg)); \
-	} while (0)
-#else  /* DUK_USE_VERBOSE_ERRORS */
-/* Non-verbose errors for low memory targets: no file, line, or message. */
-
-#define DUK_ERROR_REQUIRE_TYPE_INDEX(thr,idx,expectname,lowmemstr) do { \
-		duk_err_type((thr)); \
-	} while (0)
-
-#define DUK_ERROR_INTERNAL(thr) do { \
-		duk_err_error((thr)); \
-	} while (0)
-#define DUK_DCERROR_INTERNAL(thr) do { \
-		DUK_UNREF((thr)); \
-		return DUK_RET_ERROR; \
-	} while (0)
-#define DUK_ERROR_ALLOC_FAILED(thr) do { \
-		duk_err_error((thr)); \
-	} while (0)
-#define DUK_ERROR_UNSUPPORTED(thr) do { \
-		duk_err_error((thr)); \
-	} while (0)
-#define DUK_ERROR_ERROR(thr,msg) do { \
-		duk_err_error((thr)); \
-	} while (0)
-#define DUK_ERROR_RANGE_INDEX(thr,idx) do { \
-		duk_err_range((thr)); \
-	} while (0)
-#define DUK_ERROR_RANGE_PUSH_BEYOND(thr) do { \
-		duk_err_range((thr)); \
-	} while (0)
-#define DUK_ERROR_RANGE_INVALID_ARGS(thr) do { \
-		duk_err_range((thr)); \
-	} while (0)
-#define DUK_DCERROR_RANGE_INVALID_ARGS(thr) do { \
-		DUK_UNREF((thr)); \
-		return DUK_RET_RANGE_ERROR; \
-	} while (0)
-#define DUK_ERROR_RANGE_INVALID_COUNT(thr) do { \
-		duk_err_range((thr)); \
-	} while (0)
-#define DUK_DCERROR_RANGE_INVALID_COUNT(thr) do { \
-		DUK_UNREF((thr)); \
-		return DUK_RET_RANGE_ERROR; \
-	} while (0)
-#define DUK_ERROR_RANGE_INVALID_LENGTH(thr) do { \
-		duk_err_range((thr)); \
-	} while (0)
-#define DUK_DCERROR_RANGE_INVALID_LENGTH(thr) do { \
-		DUK_UNREF((thr)); \
-		return DUK_RET_RANGE_ERROR; \
-	} while (0)
-#define DUK_ERROR_RANGE(thr,msg) do { \
-		duk_err_range((thr)); \
-	} while (0)
-#define DUK_ERROR_EVAL(thr,msg) do { \
-		duk_err_eval((thr)); \
-	} while (0)
-#define DUK_ERROR_REFERENCE(thr,msg) do { \
-		duk_err_reference((thr)); \
-	} while (0)
-#define DUK_ERROR_SYNTAX(thr,msg) do { \
-		duk_err_syntax((thr)); \
-	} while (0)
-#define DUK_ERROR_TYPE_INVALID_ARGS(thr) do { \
-		duk_err_type((thr)); \
-	} while (0)
-#define DUK_DCERROR_TYPE_INVALID_ARGS(thr) do { \
-		DUK_UNREF((thr)); \
-		return DUK_RET_TYPE_ERROR; \
-	} while (0)
-#define DUK_ERROR_TYPE_INVALID_STATE(thr) do { \
-		duk_err_type((thr)); \
-	} while (0)
-#define DUK_DCERROR_TYPE_INVALID_STATE(thr) do { \
-		duk_err_type((thr)); \
-	} while (0)
-#define DUK_ERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
-		duk_err_type((thr)); \
-	} while (0)
-#define DUK_DCERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
-		DUK_UNREF((thr)); \
-		return DUK_RET_TYPE_ERROR; \
-	} while (0)
-#define DUK_ERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
-		duk_err_type((thr)); \
-	} while (0)
-#define DUK_ERROR_TYPE(thr,msg) do { \
-		duk_err_type((thr)); \
-	} while (0)
-#define DUK_ERROR_URI(thr,msg) do { \
-		duk_err_uri((thr)); \
-	} while (0)
-#endif  /* DUK_USE_VERBOSE_ERRORS */
+#if defined(DUK_USE_PANIC_HANDLER)
+/* already defined, good */
+#define DUK_PANIC(code,msg)  DUK_USE_PANIC_HANDLER((code),(msg))
+#else
+#define DUK_PANIC(code,msg)  duk_default_panic_handler((code),(msg))
+#endif  /* DUK_USE_PANIC_HANDLER */
 
 /*
- *  Assert macro: failure causes a fatal error.
- *
- *  NOTE: since the assert macro doesn't take a heap/context argument, there's
- *  no way to look up a heap/context specific fatal error handler which may have
- *  been given by the application.  Instead, assertion failures always use the
- *  internal default fatal error handler; it can be replaced via duk_config.h
- *  and then applies to all Duktape heaps.
+ *  Assert macro: failure causes panic.
  */
 
 #if defined(DUK_USE_ASSERTIONS)
 
-/* The message should be a compile time constant without formatting (less risk);
+/* the message should be a compile time constant without formatting (less risk);
  * we don't care about assertion text size because they're not used in production
  * builds.
  */
 #define DUK_ASSERT(x)  do { \
 	if (!(x)) { \
-		DUK_FATAL_WITHOUT_CONTEXT("assertion failed: " #x \
+		DUK_PANIC(DUK_ERR_ASSERTION_ERROR, \
+			"assertion failed: " #x \
 			" (" DUK_FILE_MACRO ":" DUK_MACRO_STRINGIFY(DUK_LINE_MACRO) ")"); \
 	} \
 	} while (0)
 
-/* Assertion compatible inside a comma expression, evaluates to void. */
+/* Assertion compatible inside a comma expression, evaluates to void.
+ * Currently not compatible with DUK_USE_PANIC_HANDLER() which may have
+ * a statement block.
+ */
+#if defined(DUK_USE_PANIC_HANDLER)
+/* XXX: resolve macro definition issue or call through a helper function? */
+#define DUK_ASSERT_EXPR(x)  ((void) 0)
+#else
 #define DUK_ASSERT_EXPR(x) \
-	((void) ((x) ? 0 : (DUK_FATAL_WITHOUT_CONTEXT("assertion failed: " #x \
+	((void) ((x) ? 0 : (DUK_PANIC(DUK_ERR_ASSERTION_ERROR, \
+				"assertion failed: " #x \
 				" (" DUK_FILE_MACRO ":" DUK_MACRO_STRINGIFY(DUK_LINE_MACRO) ")"), 0)))
+#endif
 
 #else  /* DUK_USE_ASSERTIONS */
 
@@ -413,22 +231,6 @@
 #define DUK_ASSERT_DOUBLE_IS_NORMALIZED(dval)  /* nop */
 #endif
 
-#define DUK_ASSERT_VS_SPACE(thr) \
-	DUK_ASSERT(thr->valstack_top < thr->valstack_end)
-
-/*
- *  Helper to initialize a memory area (e.g. struct) with garbage when
- *  assertions enabled.
- */
-
-#if defined(DUK_USE_ASSERTIONS)
-#define DUK_ASSERT_SET_GARBAGE(ptr,size) do { \
-		duk_memset_unsafe((void *) (ptr), 0x5a, size); \
-	} while (0)
-#else
-#define DUK_ASSERT_SET_GARBAGE(ptr,size) do {} while (0)
-#endif
-
 /*
  *  Helper for valstack space
  *
@@ -450,6 +252,126 @@
 #endif
 
 /*
+ *  Error throwing helpers
+ *
+ *  The goal is to provide verbose and configurable error messages.  Call
+ *  sites should be clean in source code and compile to a small footprint.
+ *  Small footprint is also useful for performance because small cold paths
+ *  reduce code cache pressure.  Adding macros here only makes sense if there
+ *  are enough call sites to get concrete benefits.
+ */
+
+#if defined(DUK_USE_VERBOSE_ERRORS)
+/* Verbose errors with key/value summaries (non-paranoid) or without key/value
+ * summaries (paranoid, for some security sensitive environments), the paranoid
+ * vs. non-paranoid distinction affects only a few specific errors.
+ */
+#if defined(DUK_USE_PARANOID_ERRORS)
+#define DUK_ERROR_REQUIRE_TYPE_INDEX(thr,index,expectname,lowmemstr) do { \
+		duk_err_require_type_index((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (index), (expectname)); \
+	} while (0)
+#else  /* DUK_USE_PARANOID_ERRORS */
+#define DUK_ERROR_REQUIRE_TYPE_INDEX(thr,index,expectname,lowmemstr) do { \
+		duk_err_require_type_index((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (index), (expectname)); \
+	} while (0)
+#endif  /* DUK_USE_PARANOID_ERRORS */
+
+#define DUK_ERROR_UNIMPLEMENTED(thr,msg) do { \
+		DUK_ERROR((thr), DUK_ERR_UNIMPLEMENTED_ERROR, (msg)); \
+	} while (0)
+#define DUK_ERROR_UNIMPLEMENTED_DEFMSG(thr) do { \
+		duk_err_unimplemented_defmsg((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
+	} while (0)
+#define DUK_ERROR_UNSUPPORTED(thr,msg) do { \
+		DUK_ERROR((thr), DUK_ERR_UNSUPPORTED_ERROR, (msg)); \
+	} while (0)
+#if !defined(DUK_USE_BYTECODE_DUMP_SUPPORT)
+#define DUK_ERROR_UNSUPPORTED_DEFMSG(thr) do { \
+		duk_err_unsupported_defmsg((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
+	} while (0)
+#endif
+#define DUK_ERROR_INTERNAL(thr,msg) do { \
+		duk_err_internal((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (msg)); \
+	} while (0)
+#define DUK_ERROR_INTERNAL_DEFMSG(thr) do { \
+		duk_err_internal_defmsg((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
+	} while (0)
+#define DUK_ERROR_ALLOC(thr,msg) do { \
+		duk_err_alloc((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (msg)); \
+	} while (0)
+#define DUK_ERROR_ALLOC_DEFMSG(thr) do { \
+		DUK_ERROR_ALLOC((thr), DUK_STR_ALLOC_FAILED); \
+	} while (0)
+/* DUK_ERR_ASSERTION_ERROR: no macros needed */
+#define DUK_ERROR_API_INDEX(thr,index) do { \
+		duk_err_api_index((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (index)); \
+	} while (0)
+#define DUK_ERROR_API(thr,msg) do { \
+		duk_err_api((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (msg)); \
+	} while (0)
+/* DUK_ERR_UNCAUGHT_ERROR: no macros needed */
+/* DUK_ERR_ERROR: no macros needed */
+/* DUK_ERR_EVAL: no macros needed */
+#define DUK_ERROR_RANGE(thr,msg) do { \
+		duk_err_range((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO, (msg)); \
+	} while (0)
+/* DUK_ERR_REFERENCE_ERROR: no macros needed */
+#define DUK_ERROR_SYNTAX(thr,msg) do { \
+		DUK_ERROR((thr), DUK_ERR_SYNTAX_ERROR, (msg)); \
+	} while (0)
+#define DUK_ERROR_TYPE(thr,msg) do { \
+		DUK_ERROR((thr), DUK_ERR_TYPE_ERROR, (msg)); \
+	} while (0)
+/* DUK_ERR_URI_ERROR: no macros needed */
+#else  /* DUK_USE_VERBOSE_ERRORS */
+/* Non-verbose errors for low memory targets: no file, line, or message. */
+
+#define DUK_ERROR_REQUIRE_TYPE_INDEX(thr,index,expectname,lowmemstr) do { \
+		duk_err_type((thr)); \
+	} while (0)
+
+#define DUK_ERROR_UNIMPLEMENTED(thr,msg) do { \
+		duk_err_unimplemented((thr)); \
+	} while (0)
+#define DUK_ERROR_UNIMPLEMENTED_DEFMSG(thr) do { \
+		duk_err_unimplemented((thr)); \
+	} while (0)
+#define DUK_ERROR_UNSUPPORTED(thr,msg) do { \
+		duk_err_unsupported((thr)); \
+	} while (0)
+#define DUK_ERROR_UNSUPPORTED_DEFMSG(thr) do { \
+		duk_err_unsupported((thr)); \
+	} while (0)
+#define DUK_ERROR_INTERNAL(thr,msg) do { \
+		duk_err_internal((thr)); \
+	} while (0)
+#define DUK_ERROR_INTERNAL_DEFMSG(thr) do { \
+		duk_err_internal((thr)); \
+	} while (0)
+#define DUK_ERROR_ALLOC(thr,msg) do { \
+		duk_err_alloc((thr)); \
+	} while (0)
+#define DUK_ERROR_ALLOC_DEFMSG(thr) do { \
+		duk_err_alloc((thr)); \
+	} while (0)
+#define DUK_ERROR_API_INDEX(thr,index) do { \
+		duk_err_api((thr)); \
+	} while (0)
+#define DUK_ERROR_API(thr,msg) do { \
+		duk_err_api((thr)); \
+	} while (0)
+#define DUK_ERROR_RANGE(thr,msg) do { \
+		duk_err_range((thr)); \
+	} while (0)
+#define DUK_ERROR_SYNTAX(thr,msg) do { \
+		duk_err_syntax((thr)); \
+	} while (0)
+#define DUK_ERROR_TYPE(thr,msg) do { \
+		duk_err_type((thr)); \
+	} while (0)
+#endif  /* DUK_USE_VERBOSE_ERRORS */
+
+/*
  *  Prototypes
  */
 
@@ -468,11 +390,8 @@ DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_create_and_throw(duk_hthread *thr, d
 
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_error_throw_from_negative_rc(duk_hthread *thr, duk_ret_t rc));
 
-#define DUK_AUGMENT_FLAG_NOBLAME_FILELINE  (1U << 0)  /* if set, don't blame C file/line for .fileName and .lineNumber */
-#define DUK_AUGMENT_FLAG_SKIP_ONE          (1U << 1)  /* if set, skip topmost activation in traceback construction */
-
 #if defined(DUK_USE_AUGMENT_ERROR_CREATE)
-DUK_INTERNAL_DECL void duk_err_augment_error_create(duk_hthread *thr, duk_hthread *thr_callstack, const char *filename, duk_int_t line, duk_small_uint_t flags);
+DUK_INTERNAL_DECL void duk_err_augment_error_create(duk_hthread *thr, duk_hthread *thr_callstack, const char *filename, duk_int_t line, duk_bool_t noblame_fileline);
 #endif
 #if defined(DUK_USE_AUGMENT_ERROR_THROW)
 DUK_INTERNAL_DECL void duk_err_augment_error_throw(duk_hthread *thr);
@@ -480,37 +399,40 @@ DUK_INTERNAL_DECL void duk_err_augment_error_throw(duk_hthread *thr);
 
 #if defined(DUK_USE_VERBOSE_ERRORS)
 #if defined(DUK_USE_PARANOID_ERRORS)
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_require_type_index(duk_hthread *thr, const char *filename, duk_int_t linenumber, duk_idx_t idx, const char *expect_name));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_require_type_index(duk_hthread *thr, const char *filename, duk_int_t linenumber, duk_idx_t index, const char *expect_name));
 #else
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_require_type_index(duk_hthread *thr, const char *filename, duk_int_t linenumber, duk_idx_t idx, const char *expect_name));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_require_type_index(duk_hthread *thr, const char *filename, duk_int_t linenumber, duk_idx_t index, const char *expect_name));
 #endif
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_error_internal(duk_hthread *thr, const char *filename, duk_int_t linenumber));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_error_alloc_failed(duk_hthread *thr, const char *filename, duk_int_t linenumber));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_error(duk_hthread *thr, const char *filename, duk_int_t linenumber, const char *message));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_range_index(duk_hthread *thr, const char *filename, duk_int_t linenumber, duk_idx_t idx));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_range_push_beyond(duk_hthread *thr, const char *filename, duk_int_t linenumber));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_api_index(duk_hthread *thr, const char *filename, duk_int_t linenumber, duk_idx_t index));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_api(duk_hthread *thr, const char *filename, duk_int_t linenumber, const char *message));
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_range(duk_hthread *thr, const char *filename, duk_int_t linenumber, const char *message));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_type_invalid_args(duk_hthread *thr, const char *filename, duk_int_t linenumber));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_type_invalid_state(duk_hthread *thr, const char *filename, duk_int_t linenumber));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_type_invalid_trap_result(duk_hthread *thr, const char *filename, duk_int_t linenumber));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_unimplemented_defmsg(duk_hthread *thr, const char *filename, duk_int_t linenumber));
+#if !defined(DUK_USE_BYTECODE_DUMP_SUPPORT)
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_unsupported_defmsg(duk_hthread *thr, const char *filename, duk_int_t linenumber));
+#endif
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_internal_defmsg(duk_hthread *thr, const char *filename, duk_int_t linenumber));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_internal(duk_hthread *thr, const char *filename, duk_int_t linenumber, const char *message));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_alloc(duk_hthread *thr, const char *filename, duk_int_t linenumber, const char *message));
 #else  /* DUK_VERBOSE_ERRORS */
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_error(duk_hthread *thr));
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_range(duk_hthread *thr));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_eval(duk_hthread *thr));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_reference(duk_hthread *thr));
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_syntax(duk_hthread *thr));
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_type(duk_hthread *thr));
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_uri(duk_hthread *thr));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_api(duk_hthread *thr));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_unimplemented(duk_hthread *thr));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_unsupported(duk_hthread *thr));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_internal(duk_hthread *thr));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_alloc(duk_hthread *thr));
 #endif /* DUK_VERBOSE_ERRORS */
 
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_longjmp(duk_hthread *thr));
 
-DUK_NORETURN(DUK_INTERNAL_DECL void duk_default_fatal_handler(void *udata, const char *msg));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_default_fatal_handler(duk_context *ctx, duk_errcode_t code, const char *msg));
 
-DUK_INTERNAL_DECL void duk_err_setup_ljstate1(duk_hthread *thr, duk_small_uint_t lj_type, duk_tval *tv_val);
-#if defined(DUK_USE_DEBUGGER_SUPPORT)
-DUK_INTERNAL_DECL void duk_err_check_debugger_integration(duk_hthread *thr);
+#if !defined(DUK_USE_PANIC_HANDLER)
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_default_panic_handler(duk_errcode_t code, const char *msg));
 #endif
+
+DUK_INTERNAL_DECL void duk_err_setup_heap_ljstate(duk_hthread *thr, duk_small_int_t lj_type);
 
 DUK_INTERNAL_DECL duk_hobject *duk_error_prototype_from_code(duk_hthread *thr, duk_errcode_t err_code);
 

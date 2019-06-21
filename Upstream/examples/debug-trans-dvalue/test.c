@@ -149,14 +149,6 @@ void my_detached(duk_trans_dvalue_ctx *ctx) {
 	fflush(stderr);
 }
 
-static duk_ret_t native_print(duk_context *ctx) {
-	duk_push_string(ctx, " ");
-	duk_insert(ctx, 0);
-	duk_join(ctx, duk_get_top(ctx) - 1);
-	printf("%s\n", duk_to_string(ctx, -1));
-	return 0;
-}
-
 int main(int argc, char *argv[]) {
 	duk_context *ctx;
 	duk_trans_dvalue_ctx *trans_ctx;
@@ -171,9 +163,6 @@ int main(int argc, char *argv[]) {
 		exitval = 1;
 		goto cleanup;
 	}
-
-	duk_push_c_function(ctx, native_print, DUK_VARARGS);
-	duk_put_global_string(ctx, "print");
 
 	trans_ctx = duk_trans_dvalue_init();
 	if (!trans_ctx) {
@@ -197,7 +186,6 @@ int main(int argc, char *argv[]) {
 	                    duk_trans_dvalue_peek_cb,
 	                    duk_trans_dvalue_read_flush_cb,
 	                    duk_trans_dvalue_write_flush_cb,
-	                    NULL,  /* app request cb */
 	                    duk_trans_dvalue_detached_cb,
 	                    (void *) trans_ctx);
 
@@ -217,7 +205,7 @@ int main(int argc, char *argv[]) {
 		"\n"
 		"print('Hello world!');\n"
 		"[ undefined, null, true, false, 123, -123, 123.1, 0, -0, 1/0, 0/0, -1/0, \n"
-		"  'foo', Uint8Array.allocPlain('bar'), Duktape.Pointer('dummy'), Math.cos, \n"
+		"  'foo', Duktape.Buffer('bar'), Duktape.Pointer('dummy'), Math.cos, \n"
 		"].forEach(function (val) {\n"
 		"    print(val);\n"
 		"    evalMe = val;\n"
@@ -227,7 +215,7 @@ int main(int argc, char *argv[]) {
 		"for (i = 0; i < 10; i++) {\n"
 		"    print(i, str);\n"
 		"    evalMe = str;\n"
-		"    evalMe = Uint8Array.allocPlain(str);\n"
+		"    evalMe = Duktape.Buffer(str);\n"
 		"    str = str + str;\n"
 		"}\n"
 	);

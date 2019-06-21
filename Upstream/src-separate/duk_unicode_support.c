@@ -141,7 +141,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_encode_cesu8(duk_ucodepoint_t cp, duk_u
 		/*
 		 *  Unicode codepoints above U+FFFF are encoded as surrogate
 		 *  pairs here.  This ensures that all CESU-8 codepoints are
-		 *  16-bit values as expected in ECMAScript.  The surrogate
+		 *  16-bit values as expected in Ecmascript.  The surrogate
 		 *  pairs always get a 3-byte encoding (each) in CESU-8.
 		 *  See: http://en.wikipedia.org/wiki/Surrogate_pair
 		 *
@@ -250,17 +250,8 @@ DUK_INTERNAL duk_small_int_t duk_unicode_decode_xutf8(duk_hthread *thr, const du
 
 	while (n > 0) {
 		DUK_ASSERT(p >= ptr_start && p < ptr_end);
-		ch = (duk_uint_fast8_t) (*p++);
-#if 0
-		if (ch & 0xc0 != 0x80) {
-			/* not a continuation byte */
-			p--;
-			*ptr = p;
-			*out_cp = DUK_UNICODE_CP_REPLACEMENT_CHARACTER;
-			return 1;
-		}
-#endif
-		res = (res << 6) + (duk_uint32_t) (ch & 0x3f);
+		res = res << 6;
+		res += (duk_uint32_t) ((*p++) & 0x3f);
 		n--;
 	}
 
@@ -279,8 +270,9 @@ DUK_INTERNAL duk_ucodepoint_t duk_unicode_decode_xutf8_checked(duk_hthread *thr,
 	if (duk_unicode_decode_xutf8(thr, ptr, ptr_start, ptr_end, &cp)) {
 		return cp;
 	}
-	DUK_ERROR_INTERNAL(thr);
-	DUK_WO_NORETURN(return 0;);
+	DUK_ERROR_INTERNAL(thr, "utf-8 decode failed");  /* XXX: 'internal error' is a bit of a misnomer */
+	DUK_UNREACHABLE();
+	return 0;
 }
 
 /* Compute (extended) utf-8 length without codepoint encoding validation,
@@ -293,7 +285,7 @@ DUK_INTERNAL duk_ucodepoint_t duk_unicode_decode_xutf8_checked(duk_hthread *thr,
  * chosen from several variants, based on x64 gcc -O2 testing.  See:
  * https://github.com/svaarala/duktape/pull/422
  *
- * NOTE: must match tools/dukutil.py:duk_unicode_unvalidated_utf8_length().
+ * NOTE: must match src/dukutil.py:duk_unicode_unvalidated_utf8_length().
  */
 
 #if defined(DUK_USE_PREFER_SIZE)
@@ -404,7 +396,7 @@ DUK_INTERNAL duk_size_t duk_unicode_unvalidated_utf8_length(const duk_uint8_t *d
  *  Used for slow path Unicode matching.
  */
 
-/* Must match tools/extract_chars.py, generate_match_table3(). */
+/* Must match src/extract_chars.py, generate_match_table3(). */
 DUK_LOCAL duk_uint32_t duk__uni_decode_value(duk_bitdecoder_ctx *bd_ctx) {
 	duk_uint32_t t;
 
@@ -429,7 +421,7 @@ DUK_LOCAL duk_small_int_t duk__uni_range_match(const duk_uint8_t *unitab, duk_si
 	duk_bitdecoder_ctx bd_ctx;
 	duk_codepoint_t prev_re;
 
-	duk_memzero(&bd_ctx, sizeof(bd_ctx));
+	DUK_MEMZERO(&bd_ctx, sizeof(bd_ctx));
 	bd_ctx.data = (const duk_uint8_t *) unitab;
 	bd_ctx.length = (duk_size_t) unilen;
 
@@ -475,7 +467,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_whitespace(duk_codepoint_t cp) {
 	 *    FEFF;ZERO WIDTH NO-BREAK SPACE;Cf;0;BN;;;;;N;BYTE ORDER MARK;;;;
 	 *
 	 *  It also specifies any Unicode category 'Zs' characters as white
-	 *  space.  These can be extracted with the "tools/extract_chars.py" script.
+	 *  space.  These can be extracted with the "src/extract_chars.py" script.
 	 *  Current result:
 	 *
 	 *    RAW OUTPUT:
@@ -582,7 +574,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_identifier_start(duk_codepoint_t cp)
 	 *
 	 *  The "UnicodeLetter" alternative of the production allows letters
 	 *  from various Unicode categories.  These can be extracted with the
-	 *  "tools/extract_chars.py" script.
+	 *  "src/extract_chars.py" script.
 	 *
 	 *  Because the result has hundreds of Unicode codepoint ranges, matching
 	 *  for any values >= 0x80 are done using a very slow range-by-range scan
@@ -613,7 +605,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_identifier_start(duk_codepoint_t cp)
 
 	/* Non-ASCII slow path (range-by-range linear comparison), very slow */
 
-#if defined(DUK_USE_SOURCE_NONBMP)
+#ifdef DUK_USE_SOURCE_NONBMP
 	if (duk__uni_range_match(duk_unicode_ids_noa,
 	                         (duk_size_t) sizeof(duk_unicode_ids_noa),
 	                         (duk_codepoint_t) cp)) {
@@ -679,7 +671,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_identifier_part(duk_codepoint_t cp) 
 	 *  The matching code reuses the "identifier start" tables, and then
 	 *  consults a separate range set for characters in "identifier part"
 	 *  but not in "identifier start".  These can be extracted with the
-	 *  "tools/extract_chars.py" script.
+	 *  "src/extract_chars.py" script.
 	 *
 	 *  UnicodeCombiningMark -> categories Mn, Mc
 	 *  UnicodeDigit -> categories Nd
@@ -703,7 +695,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_identifier_part(duk_codepoint_t cp) 
 
 	/* Non-ASCII slow path (range-by-range linear comparison), very slow */
 
-#if defined(DUK_USE_SOURCE_NONBMP)
+#ifdef DUK_USE_SOURCE_NONBMP
 	if (duk__uni_range_match(duk_unicode_ids_noa,
 	                         sizeof(duk_unicode_ids_noa),
 	                         (duk_codepoint_t) cp) ||
@@ -762,7 +754,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_letter(duk_codepoint_t cp) {
 
 	/* Non-ASCII slow path (range-by-range linear comparison), very slow */
 
-#if defined(DUK_USE_SOURCE_NONBMP)
+#ifdef DUK_USE_SOURCE_NONBMP
 	if (duk__uni_range_match(duk_unicode_ids_noa,
 	                         sizeof(duk_unicode_ids_noa),
 	                         (duk_codepoint_t) cp) &&
@@ -794,14 +786,14 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_letter(duk_codepoint_t cp) {
 
 /*
  *  Complex case conversion helper which decodes a bit-packed conversion
- *  control stream generated by tools/extract_caseconv.py.  The conversion
+ *  control stream generated by unicode/extract_caseconv.py.  The conversion
  *  is very slow because it runs through the conversion data in a linear
  *  fashion to save space (which is why ASCII characters have a special
  *  fast path before arriving here).
  *
  *  The particular bit counts etc have been determined experimentally to
  *  be small but still sufficient, and must match the Python script
- *  (tools/extract_caseconv.py).
+ *  (src/extract_caseconv.py).
  *
  *  The return value is the case converted codepoint or -1 if the conversion
  *  results in multiple characters (this is useful for regexp Canonicalization
@@ -825,8 +817,8 @@ duk_codepoint_t duk__slow_case_conversion(duk_hthread *thr,
 	duk_codepoint_t start_i;
 	duk_codepoint_t start_o;
 
-	DUK_ASSERT(bd_ctx != NULL);
 	DUK_UNREF(thr);
+	DUK_ASSERT(bd_ctx != NULL);
 
 	DUK_DDD(DUK_DDDPRINT("slow case conversion for codepoint: %ld", (long) cp));
 
@@ -861,7 +853,7 @@ duk_codepoint_t duk__slow_case_conversion(duk_hthread *thr,
 	}
 
 	/* 1:1 conversion */
-	n = (duk_small_int_t) duk_bd_decode(bd_ctx, 7);
+	n = (duk_small_int_t) duk_bd_decode(bd_ctx, 6);
 	DUK_DDD(DUK_DDDPRINT("checking 1:1 conversions (count %ld)", (long) n));
 	while (n--) {
 		start_i = (duk_codepoint_t) duk_bd_decode(bd_ctx, 16);
@@ -981,7 +973,7 @@ duk_codepoint_t duk__case_transform_helper(duk_hthread *thr,
 	}
 
 	/* 1:1 or special conversions, but not locale/context specific: script generated rules */
-	duk_memzero(&bd_ctx, sizeof(bd_ctx));
+	DUK_MEMZERO(&bd_ctx, sizeof(bd_ctx));
 	if (uppercase) {
 		bd_ctx.data = (const duk_uint8_t *) duk_unicode_caseconv_uc;
 		bd_ctx.length = (duk_size_t) sizeof(duk_unicode_caseconv_uc);
@@ -1008,14 +1000,15 @@ duk_codepoint_t duk__case_transform_helper(duk_hthread *thr,
  *  Replace valstack top with case converted version.
  */
 
-DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_bool_t uppercase) {
+DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_small_int_t uppercase) {
+	duk_context *ctx = (duk_context *) thr;
 	duk_hstring *h_input;
 	duk_bufwriter_ctx bw_alloc;
 	duk_bufwriter_ctx *bw;
 	const duk_uint8_t *p, *p_start, *p_end;
 	duk_codepoint_t prev, curr, next;
 
-	h_input = duk_require_hstring(thr, -1);  /* Accept symbols. */
+	h_input = duk_require_hstring(ctx, -1);
 	DUK_ASSERT(h_input != NULL);
 
 	bw = &bw_alloc;
@@ -1035,7 +1028,7 @@ DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_bool_t u
 		curr = next;
 		next = -1;
 		if (p < p_end) {
-			next = (duk_codepoint_t) duk_unicode_decode_xutf8_checked(thr, &p, p_start, p_end);
+			next = (int) duk_unicode_decode_xutf8_checked(thr, &p, p_start, p_end);
 		} else {
 			/* end of input and last char has been processed */
 			if (curr < 0) {
@@ -1062,12 +1055,11 @@ DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_bool_t u
 	}
 
 	DUK_BW_COMPACT(thr, bw);
-	(void) duk_buffer_to_string(thr, -1);  /* Safe, output is encoded. */
-	/* invalidates h_buf pointer */
-	duk_remove_m2(thr);
+	duk_to_string(ctx, -1);  /* invalidates h_buf pointer */
+	duk_remove(ctx, -2);
 }
 
-#if defined(DUK_USE_REGEXP_SUPPORT)
+#ifdef DUK_USE_REGEXP_SUPPORT
 
 /*
  *  Canonicalize() abstract operation needed for canonicalization of individual

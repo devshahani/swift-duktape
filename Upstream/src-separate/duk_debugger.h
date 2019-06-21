@@ -1,4 +1,4 @@
-#if !defined(DUK_DEBUGGER_H_INCLUDED)
+#ifndef DUK_DEBUGGER_H_INCLUDED
 #define DUK_DEBUGGER_H_INCLUDED
 
 /* Debugger protocol version is defined in the public API header. */
@@ -39,9 +39,9 @@
 
 /* Commands and notifys initiated by Duktape. */
 #define DUK_DBG_CMD_STATUS               0x01
-#define DUK_DBG_CMD_UNUSED_2             0x02  /* Duktape 1.x: print notify */
-#define DUK_DBG_CMD_UNUSED_3             0x03  /* Duktape 1.x: alert notify */
-#define DUK_DBG_CMD_UNUSED_4             0x04  /* Duktape 1.x: log notify */
+#define DUK_DBG_CMD_PRINT                0x02
+#define DUK_DBG_CMD_ALERT                0x03
+#define DUK_DBG_CMD_LOG                  0x04
 #define DUK_DBG_CMD_THROW                0x05
 #define DUK_DBG_CMD_DETACHING            0x06
 #define DUK_DBG_CMD_APPNOTIFY            0x07
@@ -73,8 +73,7 @@
 /* The low 8 bits map directly to duk_hobject.h DUK_PROPDESC_FLAG_xxx.
  * The remaining flags are specific to the debugger.
  */
-#define DUK_DBG_PROPFLAG_SYMBOL          (1U << 8)
-#define DUK_DBG_PROPFLAG_HIDDEN          (1U << 9)
+#define DUK_DBG_PROPFLAG_INTERNAL        (1 << 8)
 
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
 DUK_INTERNAL_DECL void duk_debug_do_detach(duk_heap *heap);
@@ -140,12 +139,6 @@ DUK_INTERNAL_DECL duk_bool_t duk_debug_process_messages(duk_hthread *thr, duk_bo
 
 DUK_INTERNAL_DECL duk_small_int_t duk_debug_add_breakpoint(duk_hthread *thr, duk_hstring *filename, duk_uint32_t line);
 DUK_INTERNAL_DECL duk_bool_t duk_debug_remove_breakpoint(duk_hthread *thr, duk_small_uint_t breakpoint_index);
-
-DUK_INTERNAL_DECL duk_bool_t duk_debug_is_attached(duk_heap *heap);
-DUK_INTERNAL_DECL duk_bool_t duk_debug_is_paused(duk_heap *heap);
-DUK_INTERNAL_DECL void duk_debug_set_paused(duk_heap *heap);
-DUK_INTERNAL_DECL void duk_debug_clear_paused(duk_heap *heap);
-DUK_INTERNAL_DECL void duk_debug_clear_pause_state(duk_heap *heap);
-#endif  /* DUK_USE_DEBUGGER_SUPPORT */
+#endif
 
 #endif  /* DUK_DEBUGGER_H_INCLUDED */

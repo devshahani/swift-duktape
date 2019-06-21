@@ -41,16 +41,16 @@ DUK_INTERNAL duk_hbuffer *duk_hbuffer_alloc(duk_heap *heap, duk_size_t size, duk
 	}
 
 	res = (duk_hbuffer *) DUK_ALLOC(heap, alloc_size);
-	if (DUK_UNLIKELY(res == NULL)) {
-		goto alloc_error;
+	if (!res) {
+		goto error;
 	}
 
 	/* zero everything unless requested not to do so */
 #if defined(DUK_USE_ZERO_BUFFER_DATA)
-	duk_memzero((void *) res,
+	DUK_MEMZERO((void *) res,
 	            (flags & DUK_BUF_FLAG_NOZERO) ? header_size : alloc_size);
 #else
-	duk_memzero((void *) res, header_size);
+	DUK_MEMZERO((void *) res, header_size);
 #endif
 
 	if (flags & DUK_BUF_FLAG_EXTERNAL) {
@@ -73,14 +73,14 @@ DUK_INTERNAL duk_hbuffer *duk_hbuffer_alloc(duk_heap *heap, duk_size_t size, duk
 		if (size > 0) {
 			DUK_ASSERT(!(flags & DUK_BUF_FLAG_EXTERNAL));  /* alloc external with size zero */
 			DUK_DDD(DUK_DDDPRINT("dynamic buffer with nonzero size, alloc actual buffer"));
-#if defined(DUK_USE_ZERO_BUFFER_DATA)
+#ifdef DUK_USE_ZERO_BUFFER_DATA
 			ptr = DUK_ALLOC_ZEROED(heap, size);
 #else
 			ptr = DUK_ALLOC(heap, size);
 #endif
-			if (DUK_UNLIKELY(ptr == NULL)) {
+			if (!ptr) {
 				/* Because size > 0, NULL check is correct */
-				goto alloc_error;
+				goto error;
 			}
 			*out_bufdata = ptr;
 
@@ -97,7 +97,7 @@ DUK_INTERNAL duk_hbuffer *duk_hbuffer_alloc(duk_heap *heap, duk_size_t size, duk
 			DUK_ASSERT(DUK_HBUFFER_DYNAMIC_GET_DATA_PTR(heap, h) == NULL);
 		}
 	} else {
-		*out_bufdata = (void *) ((duk_hbuffer_fixed *) (void *) res + 1);
+		*out_bufdata = (void *) ((duk_hbuffer_fixed *) res + 1);
 	}
 
 	DUK_HBUFFER_SET_SIZE(res, size);
@@ -116,7 +116,7 @@ DUK_INTERNAL duk_hbuffer *duk_hbuffer_alloc(duk_heap *heap, duk_size_t size, duk
 	DUK_DDD(DUK_DDDPRINT("allocated hbuffer: %p", (void *) res));
 	return res;
 
- alloc_error:
+ error:
 	DUK_DD(DUK_DDPRINT("hbuffer allocation failed"));
 
 	DUK_FREE(heap, res);

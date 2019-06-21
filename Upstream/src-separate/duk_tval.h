@@ -10,13 +10,15 @@
  *  64-bit environments (it usually pads to 16 bytes per value).
  *
  *  Selecting the tagged type format involves many trade-offs (memory
- *  use, size and performance of generated code, portability, etc).
+ *  use, size and performance of generated code, portability, etc),
+ *  see doc/types.rst for a detailed discussion (especially of how the
+ *  IEEE double format is used to pack tagged values).
  *
  *  NB: because macro arguments are often expressions, macros should
  *  avoid evaluating their argument more than once.
  */
 
-#if !defined(DUK_TVAL_H_INCLUDED)
+#ifndef DUK_TVAL_H_INCLUDED
 #define DUK_TVAL_H_INCLUDED
 
 /* sanity */
@@ -33,17 +35,10 @@
 
 /* use duk_double_union as duk_tval directly */
 typedef union duk_double_union duk_tval;
-typedef struct {
-	duk_uint16_t a;
-	duk_uint16_t b;
-	duk_uint16_t c;
-	duk_uint16_t d;
-} duk_tval_unused;
 
 /* tags */
 #define DUK_TAG_NORMALIZED_NAN    0x7ff8UL   /* the NaN variant we use */
 /* avoid tag 0xfff0, no risk of confusion with negative infinity */
-#define DUK_TAG_MIN               0xfff1UL
 #if defined(DUK_USE_FASTINT)
 #define DUK_TAG_FASTINT           0xfff1UL   /* embed: integer value */
 #endif
@@ -57,226 +52,195 @@ typedef struct {
 #define DUK_TAG_STRING            0xfff8UL   /* embed: duk_hstring ptr */
 #define DUK_TAG_OBJECT            0xfff9UL   /* embed: duk_hobject ptr */
 #define DUK_TAG_BUFFER            0xfffaUL   /* embed: duk_hbuffer ptr */
-#define DUK_TAG_MAX               0xfffaUL
 
 /* for convenience */
 #define DUK_XTAG_BOOLEAN_FALSE    0xfff50000UL
 #define DUK_XTAG_BOOLEAN_TRUE     0xfff50001UL
 
-#define DUK_TVAL_IS_VALID_TAG(tv) \
-	(DUK_TVAL_GET_TAG((tv)) - DUK_TAG_MIN <= DUK_TAG_MAX - DUK_TAG_MIN)
-
-/* DUK_TVAL_UNUSED initializer for duk_tval_unused, works for any endianness. */
-#define DUK_TVAL_UNUSED_INITIALIZER() \
-	{ DUK_TAG_UNUSED, DUK_TAG_UNUSED, DUK_TAG_UNUSED, DUK_TAG_UNUSED }
-
 /* two casts to avoid gcc warning: "warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]" */
 #if defined(DUK_USE_64BIT_OPS)
 #if defined(DUK_USE_DOUBLE_ME)
-#define DUK__TVAL_SET_TAGGEDPOINTER(tv,h,tag)  do { \
-		(tv)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) (tag)) << 16) | (((duk_uint64_t) (duk_uint32_t) (h)) << 32); \
+#define DUK__TVAL_SET_TAGGEDPOINTER(v,h,tag)  do { \
+		(v)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) (tag)) << 16) | (((duk_uint64_t) (duk_uint32_t) (h)) << 32); \
 	} while (0)
 #else
-#define DUK__TVAL_SET_TAGGEDPOINTER(tv,h,tag)  do { \
-		(tv)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) (tag)) << 48) | ((duk_uint64_t) (duk_uint32_t) (h)); \
+#define DUK__TVAL_SET_TAGGEDPOINTER(v,h,tag)  do { \
+		(v)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) (tag)) << 48) | ((duk_uint64_t) (duk_uint32_t) (h)); \
 	} while (0)
 #endif
 #else  /* DUK_USE_64BIT_OPS */
-#define DUK__TVAL_SET_TAGGEDPOINTER(tv,h,tag)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->ui[DUK_DBL_IDX_UI0] = ((duk_uint32_t) (tag)) << 16; \
-		duk__tv->ui[DUK_DBL_IDX_UI1] = (duk_uint32_t) (h); \
+#define DUK__TVAL_SET_TAGGEDPOINTER(v,h,tag)  do { \
+		(v)->ui[DUK_DBL_IDX_UI0] = ((duk_uint32_t) (tag)) << 16; \
+		(v)->ui[DUK_DBL_IDX_UI1] = (duk_uint32_t) (h); \
 	} while (0)
 #endif  /* DUK_USE_64BIT_OPS */
 
 #if defined(DUK_USE_64BIT_OPS)
 /* Double casting for pointer to avoid gcc warning (cast from pointer to integer of different size) */
 #if defined(DUK_USE_DOUBLE_ME)
-#define DUK__TVAL_SET_LIGHTFUNC(tv,fp,flags)  do { \
-		(tv)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) DUK_TAG_LIGHTFUNC) << 16) | \
-		                              ((duk_uint64_t) (flags)) | \
-		                              (((duk_uint64_t) (duk_uint32_t) (fp)) << 32); \
+#define DUK__TVAL_SET_LIGHTFUNC(v,fp,flags)  do { \
+		(v)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) DUK_TAG_LIGHTFUNC) << 16) | \
+		                             ((duk_uint64_t) (flags)) | \
+		                             (((duk_uint64_t) (duk_uint32_t) (fp)) << 32); \
 	} while (0)
 #else
-#define DUK__TVAL_SET_LIGHTFUNC(tv,fp,flags)  do { \
-		(tv)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) DUK_TAG_LIGHTFUNC) << 48) | \
-		                              (((duk_uint64_t) (flags)) << 32) | \
-		                              ((duk_uint64_t) (duk_uint32_t) (fp)); \
+#define DUK__TVAL_SET_LIGHTFUNC(v,fp,flags)  do { \
+		(v)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) DUK_TAG_LIGHTFUNC) << 48) | \
+		                             (((duk_uint64_t) (flags)) << 32) | \
+		                             ((duk_uint64_t) (duk_uint32_t) (fp)); \
 	} while (0)
 #endif
 #else  /* DUK_USE_64BIT_OPS */
-#define DUK__TVAL_SET_LIGHTFUNC(tv,fp,flags)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->ui[DUK_DBL_IDX_UI0] = (((duk_uint32_t) DUK_TAG_LIGHTFUNC) << 16) | ((duk_uint32_t) (flags)); \
-		duk__tv->ui[DUK_DBL_IDX_UI1] = (duk_uint32_t) (fp); \
+#define DUK__TVAL_SET_LIGHTFUNC(v,fp,flags)  do { \
+		(v)->ui[DUK_DBL_IDX_UI0] = (((duk_uint32_t) DUK_TAG_LIGHTFUNC) << 16) | ((duk_uint32_t) (flags)); \
+		(v)->ui[DUK_DBL_IDX_UI1] = (duk_uint32_t) (fp); \
 	} while (0)
 #endif  /* DUK_USE_64BIT_OPS */
 
 #if defined(DUK_USE_FASTINT)
 /* Note: masking is done for 'i' to deal with negative numbers correctly */
 #if defined(DUK_USE_DOUBLE_ME)
-#define DUK__TVAL_SET_I48(tv,i)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->ui[DUK_DBL_IDX_UI0] = ((duk_uint32_t) DUK_TAG_FASTINT) << 16 | (((duk_uint32_t) ((i) >> 32)) & 0x0000ffffUL); \
-		duk__tv->ui[DUK_DBL_IDX_UI1] = (duk_uint32_t) (i); \
+#define DUK__TVAL_SET_FASTINT(v,i)  do { \
+		(v)->ui[DUK_DBL_IDX_UI0] = ((duk_uint32_t) DUK_TAG_FASTINT) << 16 | (((duk_uint32_t) ((i) >> 32)) & 0x0000ffffUL); \
+		(v)->ui[DUK_DBL_IDX_UI1] = (duk_uint32_t) (i); \
 	} while (0)
-#define DUK__TVAL_SET_U32(tv,i)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->ui[DUK_DBL_IDX_UI0] = ((duk_uint32_t) DUK_TAG_FASTINT) << 16; \
-		duk__tv->ui[DUK_DBL_IDX_UI1] = (duk_uint32_t) (i); \
+#define DUK__TVAL_SET_FASTINT_U32(v,i)  do { \
+		(v)->ui[DUK_DBL_IDX_UI0] = ((duk_uint32_t) DUK_TAG_FASTINT) << 16; \
+		(v)->ui[DUK_DBL_IDX_UI1] = (duk_uint32_t) (i); \
 	} while (0)
 #else
-#define DUK__TVAL_SET_I48(tv,i)  do { \
-		(tv)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) DUK_TAG_FASTINT) << 48) | (((duk_uint64_t) (i)) & DUK_U64_CONSTANT(0x0000ffffffffffff)); \
+#define DUK__TVAL_SET_FASTINT(v,i)  do { \
+		(v)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) DUK_TAG_FASTINT) << 48) | (((duk_uint64_t) (i)) & 0x0000ffffffffffffULL); \
 	} while (0)
-#define DUK__TVAL_SET_U32(tv,i)  do { \
-		(tv)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) DUK_TAG_FASTINT) << 48) | (duk_uint64_t) (i); \
+#define DUK__TVAL_SET_FASTINT_U32(v,i)  do { \
+		(v)->ull[DUK_DBL_IDX_ULL0] = (((duk_uint64_t) DUK_TAG_FASTINT) << 48) | (duk_uint64_t) (i); \
 	} while (0)
 #endif
 
-/* This needs to go through a cast because sign extension is needed. */
-#define DUK__TVAL_SET_I32(tv,i)  do { \
+#define DUK__TVAL_SET_FASTINT_I32(v,i)  do { \
 		duk_int64_t duk__tmp = (duk_int64_t) (i); \
-		DUK_TVAL_SET_I48((tv), duk__tmp); \
+		DUK_TVAL_SET_FASTINT((v), duk__tmp); \
 	} while (0)
 
-/* XXX: Clumsy sign extend and masking of 16 topmost bits. */
+/* XXX: clumsy sign extend and masking of 16 topmost bits */
 #if defined(DUK_USE_DOUBLE_ME)
-#define DUK__TVAL_GET_FASTINT(tv)      (((duk_int64_t) ((((duk_uint64_t) (tv)->ui[DUK_DBL_IDX_UI0]) << 32) | ((duk_uint64_t) (tv)->ui[DUK_DBL_IDX_UI1]))) << 16 >> 16)
+#define DUK__TVAL_GET_FASTINT(v)      (((duk_int64_t) ((((duk_uint64_t) (v)->ui[DUK_DBL_IDX_UI0]) << 32) | ((duk_uint64_t) (v)->ui[DUK_DBL_IDX_UI1]))) << 16 >> 16)
 #else
-#define DUK__TVAL_GET_FASTINT(tv)      ((((duk_int64_t) (tv)->ull[DUK_DBL_IDX_ULL0]) << 16) >> 16)
+#define DUK__TVAL_GET_FASTINT(v)      ((((duk_int64_t) (v)->ull[DUK_DBL_IDX_ULL0]) << 16) >> 16)
 #endif
-#define DUK__TVAL_GET_FASTINT_U32(tv)  ((tv)->ui[DUK_DBL_IDX_UI1])
-#define DUK__TVAL_GET_FASTINT_I32(tv)  ((duk_int32_t) (tv)->ui[DUK_DBL_IDX_UI1])
+#define DUK__TVAL_GET_FASTINT_U32(v)  ((v)->ui[DUK_DBL_IDX_UI1])
+#define DUK__TVAL_GET_FASTINT_I32(v)  ((duk_int32_t) (v)->ui[DUK_DBL_IDX_UI1])
 #endif  /* DUK_USE_FASTINT */
 
-#define DUK_TVAL_SET_UNDEFINED(tv)  do { \
-		(tv)->us[DUK_DBL_IDX_US0] = (duk_uint16_t) DUK_TAG_UNDEFINED; \
+#define DUK_TVAL_SET_UNDEFINED(v)  do { \
+		(v)->us[DUK_DBL_IDX_US0] = (duk_uint16_t) DUK_TAG_UNDEFINED; \
 	} while (0)
-#define DUK_TVAL_SET_UNUSED(tv)  do { \
-		(tv)->us[DUK_DBL_IDX_US0] = (duk_uint16_t) DUK_TAG_UNUSED; \
+#define DUK_TVAL_SET_UNUSED(v)  do { \
+		(v)->us[DUK_DBL_IDX_US0] = (duk_uint16_t) DUK_TAG_UNUSED; \
 	} while (0)
-#define DUK_TVAL_SET_NULL(tv)  do { \
-		(tv)->us[DUK_DBL_IDX_US0] = (duk_uint16_t) DUK_TAG_NULL; \
+#define DUK_TVAL_SET_NULL(v)  do { \
+		(v)->us[DUK_DBL_IDX_US0] = (duk_uint16_t) DUK_TAG_NULL; \
 	} while (0)
 
-#define DUK_TVAL_SET_BOOLEAN(tv,val)         DUK_DBLUNION_SET_HIGH32((tv), (((duk_uint32_t) DUK_TAG_BOOLEAN) << 16) | ((duk_uint32_t) (val)))
+#define DUK_TVAL_SET_BOOLEAN(v,val)         DUK_DBLUNION_SET_HIGH32((v), (((duk_uint32_t) DUK_TAG_BOOLEAN) << 16) | ((duk_uint32_t) (val)))
 
-#define DUK_TVAL_SET_NAN(tv)                 DUK_DBLUNION_SET_NAN_FULL((tv))
+#define DUK_TVAL_SET_NAN(v)                 DUK_DBLUNION_SET_NAN_FULL((v))
 
 /* Assumes that caller has normalized NaNs, otherwise trouble ahead. */
 #if defined(DUK_USE_FASTINT)
-#define DUK_TVAL_SET_DOUBLE(tv,d)  do { \
+#define DUK_TVAL_SET_DOUBLE(v,d)  do { \
 		duk_double_t duk__dblval; \
 		duk__dblval = (d); \
 		DUK_ASSERT_DOUBLE_IS_NORMALIZED(duk__dblval); \
-		DUK_DBLUNION_SET_DOUBLE((tv), duk__dblval); \
+		DUK_DBLUNION_SET_DOUBLE((v), duk__dblval); \
 	} while (0)
-#define DUK_TVAL_SET_I48(tv,i)               DUK__TVAL_SET_I48((tv), (i))
-#define DUK_TVAL_SET_I32(tv,i)               DUK__TVAL_SET_I32((tv), (i))
-#define DUK_TVAL_SET_U32(tv,i)               DUK__TVAL_SET_U32((tv), (i))
-#define DUK_TVAL_SET_NUMBER_CHKFAST_FAST(tv,d)  duk_tval_set_number_chkfast_fast((tv), (d))
-#define DUK_TVAL_SET_NUMBER_CHKFAST_SLOW(tv,d)  duk_tval_set_number_chkfast_slow((tv), (d))
-#define DUK_TVAL_SET_NUMBER(tv,d)            DUK_TVAL_SET_DOUBLE((tv), (d))
-#define DUK_TVAL_CHKFAST_INPLACE_FAST(tv)  do { \
+#define DUK_TVAL_SET_FASTINT(v,i)           DUK__TVAL_SET_FASTINT((v), (i))
+#define DUK_TVAL_SET_FASTINT_I32(v,i)       DUK__TVAL_SET_FASTINT_I32((v), (i))
+#define DUK_TVAL_SET_FASTINT_U32(v,i)       DUK__TVAL_SET_FASTINT_U32((v), (i))
+#define DUK_TVAL_SET_NUMBER_CHKFAST(v,d)    duk_tval_set_number_chkfast((v), (d))
+#define DUK_TVAL_SET_NUMBER(v,d)            DUK_TVAL_SET_DOUBLE((v), (d))
+#define DUK_TVAL_CHKFAST_INPLACE(v)  do { \
 		duk_tval *duk__tv; \
 		duk_double_t duk__d; \
-		duk__tv = (tv); \
+		duk__tv = (v); \
 		if (DUK_TVAL_IS_DOUBLE(duk__tv)) { \
 			duk__d = DUK_TVAL_GET_DOUBLE(duk__tv); \
-			DUK_TVAL_SET_NUMBER_CHKFAST_FAST(duk__tv, duk__d); \
+			DUK_TVAL_SET_NUMBER_CHKFAST(duk__tv, duk__d); \
 		} \
 	} while (0)
-#define DUK_TVAL_CHKFAST_INPLACE_SLOW(tv)  do { \
-		duk_tval *duk__tv; \
-		duk_double_t duk__d; \
-		duk__tv = (tv); \
-		if (DUK_TVAL_IS_DOUBLE(duk__tv)) { \
-			duk__d = DUK_TVAL_GET_DOUBLE(duk__tv); \
-			DUK_TVAL_SET_NUMBER_CHKFAST_SLOW(duk__tv, duk__d); \
-		} \
-	} while (0)
-#else  /* DUK_USE_FASTINT */
-#define DUK_TVAL_SET_DOUBLE(tv,d)  do { \
+#else
+#define DUK_TVAL_SET_DOUBLE(v,d)  do { \
 		duk_double_t duk__dblval; \
 		duk__dblval = (d); \
 		DUK_ASSERT_DOUBLE_IS_NORMALIZED(duk__dblval); \
-		DUK_DBLUNION_SET_DOUBLE((tv), duk__dblval); \
+		DUK_DBLUNION_SET_DOUBLE((v), duk__dblval); \
 	} while (0)
-#define DUK_TVAL_SET_I48(tv,i)               DUK_TVAL_SET_DOUBLE((tv), (duk_double_t) (i))  /* XXX: fast int-to-double */
-#define DUK_TVAL_SET_I32(tv,i)               DUK_TVAL_SET_DOUBLE((tv), (duk_double_t) (i))
-#define DUK_TVAL_SET_U32(tv,i)               DUK_TVAL_SET_DOUBLE((tv), (duk_double_t) (i))
-#define DUK_TVAL_SET_NUMBER_CHKFAST_FAST(tv,d)    DUK_TVAL_SET_DOUBLE((tv), (d))
-#define DUK_TVAL_SET_NUMBER_CHKFAST_SLOW(tv,d)    DUK_TVAL_SET_DOUBLE((tv), (d))
-#define DUK_TVAL_SET_NUMBER(tv,d)            DUK_TVAL_SET_DOUBLE((tv), (d))
-#define DUK_TVAL_CHKFAST_INPLACE_FAST(tv)  do { } while (0)
-#define DUK_TVAL_CHKFAST_INPLACE_SLOW(tv)  do { } while (0)
-#endif  /* DUK_USE_FASTINT */
+#define DUK_TVAL_SET_FASTINT(v,i)           DUK_TVAL_SET_DOUBLE((v), (duk_double_t) (i))  /* XXX: fast int-to-double */
+#define DUK_TVAL_SET_FASTINT_I32(v,i)       DUK_TVAL_SET_DOUBLE((v), (duk_double_t) (i))
+#define DUK_TVAL_SET_FASTINT_U32(v,i)       DUK_TVAL_SET_DOUBLE((v), (duk_double_t) (i))
+#define DUK_TVAL_SET_NUMBER_CHKFAST(v,d)    DUK_TVAL_SET_DOUBLE((v), (d))
+#define DUK_TVAL_SET_NUMBER(v,d)            DUK_TVAL_SET_DOUBLE((v), (d))
+#define DUK_TVAL_CHKFAST_INPLACE(v)  do { } while (0)
+#endif
 
-#define DUK_TVAL_SET_FASTINT(tv,i)           DUK_TVAL_SET_I48((tv), (i))  /* alias */
+#define DUK_TVAL_SET_LIGHTFUNC(v,fp,flags)  DUK__TVAL_SET_LIGHTFUNC((v), (fp), (flags))
+#define DUK_TVAL_SET_STRING(v,h)            DUK__TVAL_SET_TAGGEDPOINTER((v), (h), DUK_TAG_STRING)
+#define DUK_TVAL_SET_OBJECT(v,h)            DUK__TVAL_SET_TAGGEDPOINTER((v), (h), DUK_TAG_OBJECT)
+#define DUK_TVAL_SET_BUFFER(v,h)            DUK__TVAL_SET_TAGGEDPOINTER((v), (h), DUK_TAG_BUFFER)
+#define DUK_TVAL_SET_POINTER(v,p)           DUK__TVAL_SET_TAGGEDPOINTER((v), (p), DUK_TAG_POINTER)
 
-#define DUK_TVAL_SET_LIGHTFUNC(tv,fp,flags)  DUK__TVAL_SET_LIGHTFUNC((tv), (fp), (flags))
-#define DUK_TVAL_SET_STRING(tv,h)            DUK__TVAL_SET_TAGGEDPOINTER((tv), (h), DUK_TAG_STRING)
-#define DUK_TVAL_SET_OBJECT(tv,h)            DUK__TVAL_SET_TAGGEDPOINTER((tv), (h), DUK_TAG_OBJECT)
-#define DUK_TVAL_SET_BUFFER(tv,h)            DUK__TVAL_SET_TAGGEDPOINTER((tv), (h), DUK_TAG_BUFFER)
-#define DUK_TVAL_SET_POINTER(tv,p)           DUK__TVAL_SET_TAGGEDPOINTER((tv), (p), DUK_TAG_POINTER)
-
-#define DUK_TVAL_SET_TVAL(tv,x)              do { *(tv) = *(x); } while (0)
+#define DUK_TVAL_SET_TVAL(v,x)              do { *(v) = *(x); } while (0)
 
 /* getters */
-#define DUK_TVAL_GET_BOOLEAN(tv)             ((duk_small_uint_t) (tv)->us[DUK_DBL_IDX_US1])
+#define DUK_TVAL_GET_BOOLEAN(v)             ((int) (v)->us[DUK_DBL_IDX_US1])
 #if defined(DUK_USE_FASTINT)
-#define DUK_TVAL_GET_DOUBLE(tv)              ((tv)->d)
-#define DUK_TVAL_GET_FASTINT(tv)             DUK__TVAL_GET_FASTINT((tv))
-#define DUK_TVAL_GET_FASTINT_U32(tv)         DUK__TVAL_GET_FASTINT_U32((tv))
-#define DUK_TVAL_GET_FASTINT_I32(tv)         DUK__TVAL_GET_FASTINT_I32((tv))
-#define DUK_TVAL_GET_NUMBER(tv)              duk_tval_get_number_packed((tv))
+#define DUK_TVAL_GET_DOUBLE(v)              ((v)->d)
+#define DUK_TVAL_GET_FASTINT(v)             DUK__TVAL_GET_FASTINT((v))
+#define DUK_TVAL_GET_FASTINT_U32(v)         DUK__TVAL_GET_FASTINT_U32((v))
+#define DUK_TVAL_GET_FASTINT_I32(v)         DUK__TVAL_GET_FASTINT_I32((v))
+#define DUK_TVAL_GET_NUMBER(v)              duk_tval_get_number_packed((v))
 #else
-#define DUK_TVAL_GET_NUMBER(tv)              ((tv)->d)
-#define DUK_TVAL_GET_DOUBLE(tv)              ((tv)->d)
+#define DUK_TVAL_GET_NUMBER(v)              ((v)->d)
+#define DUK_TVAL_GET_DOUBLE(v)              ((v)->d)
 #endif
-#define DUK_TVAL_GET_LIGHTFUNC(tv,out_fp,out_flags)  do { \
-		(out_flags) = (tv)->ui[DUK_DBL_IDX_UI0] & 0xffffUL; \
-		(out_fp) = (duk_c_function) (tv)->ui[DUK_DBL_IDX_UI1]; \
+#define DUK_TVAL_GET_LIGHTFUNC(v,out_fp,out_flags)  do { \
+		(out_flags) = (v)->ui[DUK_DBL_IDX_UI0] & 0xffffUL; \
+		(out_fp) = (duk_c_function) (v)->ui[DUK_DBL_IDX_UI1]; \
 	} while (0)
-#define DUK_TVAL_GET_LIGHTFUNC_FUNCPTR(tv)   ((duk_c_function) ((tv)->ui[DUK_DBL_IDX_UI1]))
-#define DUK_TVAL_GET_LIGHTFUNC_FLAGS(tv)     (((duk_small_uint_t) (tv)->ui[DUK_DBL_IDX_UI0]) & 0xffffUL)
-#define DUK_TVAL_GET_STRING(tv)              ((duk_hstring *) (tv)->vp[DUK_DBL_IDX_VP1])
-#define DUK_TVAL_GET_OBJECT(tv)              ((duk_hobject *) (tv)->vp[DUK_DBL_IDX_VP1])
-#define DUK_TVAL_GET_BUFFER(tv)              ((duk_hbuffer *) (tv)->vp[DUK_DBL_IDX_VP1])
-#define DUK_TVAL_GET_POINTER(tv)             ((void *) (tv)->vp[DUK_DBL_IDX_VP1])
-#define DUK_TVAL_GET_HEAPHDR(tv)             ((duk_heaphdr *) (tv)->vp[DUK_DBL_IDX_VP1])
+#define DUK_TVAL_GET_LIGHTFUNC_FUNCPTR(v)   ((duk_c_function) ((v)->ui[DUK_DBL_IDX_UI1]))
+#define DUK_TVAL_GET_LIGHTFUNC_FLAGS(v)     (((int) (v)->ui[DUK_DBL_IDX_UI0]) & 0xffffUL)
+#define DUK_TVAL_GET_STRING(v)              ((duk_hstring *) (v)->vp[DUK_DBL_IDX_VP1])
+#define DUK_TVAL_GET_OBJECT(v)              ((duk_hobject *) (v)->vp[DUK_DBL_IDX_VP1])
+#define DUK_TVAL_GET_BUFFER(v)              ((duk_hbuffer *) (v)->vp[DUK_DBL_IDX_VP1])
+#define DUK_TVAL_GET_POINTER(v)             ((void *) (v)->vp[DUK_DBL_IDX_VP1])
+#define DUK_TVAL_GET_HEAPHDR(v)             ((duk_heaphdr *) (v)->vp[DUK_DBL_IDX_VP1])
 
 /* decoding */
-#define DUK_TVAL_GET_TAG(tv)                 ((duk_small_uint_t) (tv)->us[DUK_DBL_IDX_US0])
+#define DUK_TVAL_GET_TAG(v)                 ((duk_small_uint_t) (v)->us[DUK_DBL_IDX_US0])
 
-#define DUK_TVAL_IS_UNDEFINED(tv)            (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_UNDEFINED)
-#define DUK_TVAL_IS_UNUSED(tv)               (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_UNUSED)
-#define DUK_TVAL_IS_NULL(tv)                 (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_NULL)
-#define DUK_TVAL_IS_BOOLEAN(tv)              (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_BOOLEAN)
-#define DUK_TVAL_IS_BOOLEAN_TRUE(tv)         ((tv)->ui[DUK_DBL_IDX_UI0] == DUK_XTAG_BOOLEAN_TRUE)
-#define DUK_TVAL_IS_BOOLEAN_FALSE(tv)        ((tv)->ui[DUK_DBL_IDX_UI0] == DUK_XTAG_BOOLEAN_FALSE)
-#define DUK_TVAL_IS_LIGHTFUNC(tv)            (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_LIGHTFUNC)
-#define DUK_TVAL_IS_STRING(tv)               (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_STRING)
-#define DUK_TVAL_IS_OBJECT(tv)               (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_OBJECT)
-#define DUK_TVAL_IS_BUFFER(tv)               (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_BUFFER)
-#define DUK_TVAL_IS_POINTER(tv)              (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_POINTER)
+#define DUK_TVAL_IS_UNDEFINED(v)            (DUK_TVAL_GET_TAG((v)) == DUK_TAG_UNDEFINED)
+#define DUK_TVAL_IS_UNUSED(v)               (DUK_TVAL_GET_TAG((v)) == DUK_TAG_UNUSED)
+#define DUK_TVAL_IS_NULL(v)                 (DUK_TVAL_GET_TAG((v)) == DUK_TAG_NULL)
+#define DUK_TVAL_IS_BOOLEAN(v)              (DUK_TVAL_GET_TAG((v)) == DUK_TAG_BOOLEAN)
+#define DUK_TVAL_IS_BOOLEAN_TRUE(v)         ((v)->ui[DUK_DBL_IDX_UI0] == DUK_XTAG_BOOLEAN_TRUE)
+#define DUK_TVAL_IS_BOOLEAN_FALSE(v)        ((v)->ui[DUK_DBL_IDX_UI0] == DUK_XTAG_BOOLEAN_FALSE)
+#define DUK_TVAL_IS_LIGHTFUNC(v)            (DUK_TVAL_GET_TAG((v)) == DUK_TAG_LIGHTFUNC)
+#define DUK_TVAL_IS_STRING(v)               (DUK_TVAL_GET_TAG((v)) == DUK_TAG_STRING)
+#define DUK_TVAL_IS_OBJECT(v)               (DUK_TVAL_GET_TAG((v)) == DUK_TAG_OBJECT)
+#define DUK_TVAL_IS_BUFFER(v)               (DUK_TVAL_GET_TAG((v)) == DUK_TAG_BUFFER)
+#define DUK_TVAL_IS_POINTER(v)              (DUK_TVAL_GET_TAG((v)) == DUK_TAG_POINTER)
 #if defined(DUK_USE_FASTINT)
 /* 0xfff0 is -Infinity */
-#define DUK_TVAL_IS_DOUBLE(tv)               (DUK_TVAL_GET_TAG((tv)) <= 0xfff0UL)
-#define DUK_TVAL_IS_FASTINT(tv)              (DUK_TVAL_GET_TAG((tv)) == DUK_TAG_FASTINT)
-#define DUK_TVAL_IS_NUMBER(tv)               (DUK_TVAL_GET_TAG((tv)) <= 0xfff1UL)
+#define DUK_TVAL_IS_DOUBLE(v)               (DUK_TVAL_GET_TAG((v)) <= 0xfff0UL)
+#define DUK_TVAL_IS_FASTINT(v)              (DUK_TVAL_GET_TAG((v)) == DUK_TAG_FASTINT)
+#define DUK_TVAL_IS_NUMBER(v)               (DUK_TVAL_GET_TAG((v)) <= 0xfff1UL)
 #else
-#define DUK_TVAL_IS_NUMBER(tv)               (DUK_TVAL_GET_TAG((tv)) <= 0xfff0UL)
-#define DUK_TVAL_IS_DOUBLE(tv)               DUK_TVAL_IS_NUMBER((tv))
+#define DUK_TVAL_IS_NUMBER(v)               (DUK_TVAL_GET_TAG((v)) <= 0xfff0UL)
+#define DUK_TVAL_IS_DOUBLE(v)               DUK_TVAL_IS_NUMBER((v))
 #endif
 
 /* This is performance critical because it appears in every DECREF. */
-#define DUK_TVAL_IS_HEAP_ALLOCATED(tv)       (DUK_TVAL_GET_TAG((tv)) >= DUK_TAG_STRING)
+#define DUK_TVAL_IS_HEAP_ALLOCATED(v)       (DUK_TVAL_GET_TAG((v)) >= DUK_TAG_STRING)
 
 #if defined(DUK_USE_FASTINT)
 DUK_INTERNAL_DECL duk_double_t duk_tval_get_number_packed(duk_tval *tv);
@@ -311,8 +275,8 @@ struct duk_tval_struct {
 		void *voidptr;
 		duk_hstring *hstring;
 		duk_hobject *hobject;
-		duk_hcompfunc *hcompfunc;
-		duk_hnatfunc *hnatfunc;
+		duk_hcompiledfunction *hcompiledfunction;
+		duk_hnativefunction *hnativefunction;
 		duk_hthread *hthread;
 		duk_hbuffer *hbuffer;
 		duk_heaphdr *heaphdr;
@@ -320,22 +284,7 @@ struct duk_tval_struct {
 	} v;
 };
 
-typedef struct {
-	duk_small_uint_t t;
-	duk_small_uint_t v_extra;
-	/* The rest of the fields don't matter except for debug dumps and such
-	 * for which a partial initializer may trigger out-ot-bounds memory
-	 * reads.  Include a double field which is usually as large or larger
-	 * than pointers (not always however).
-	 */
-	duk_double_t d;
-} duk_tval_unused;
-
-#define DUK_TVAL_UNUSED_INITIALIZER() \
-	{ DUK_TAG_UNUSED, 0, 0.0 }
-
-#define DUK_TAG_MIN                   0
-#define DUK_TAG_NUMBER                0  /* DUK_TAG_NUMBER only defined for non-packed duk_tval */
+#define DUK__TAG_NUMBER               0  /* not exposed */
 #if defined(DUK_USE_FASTINT)
 #define DUK_TAG_FASTINT               1
 #endif
@@ -348,12 +297,8 @@ typedef struct {
 #define DUK_TAG_STRING                8  /* first heap allocated, match bit boundary */
 #define DUK_TAG_OBJECT                9
 #define DUK_TAG_BUFFER                10
-#define DUK_TAG_MAX                   10
 
-#define DUK_TVAL_IS_VALID_TAG(tv) \
-	(DUK_TVAL_GET_TAG((tv)) - DUK_TAG_MIN <= DUK_TAG_MAX - DUK_TAG_MIN)
-
-/* DUK_TAG_NUMBER is intentionally first, as it is the default clause in code
+/* DUK__TAG_NUMBER is intentionally first, as it is the default clause in code
  * to support the 8-byte representation.  Further, it is a non-heap-allocated
  * type so it should come before DUK_TAG_STRING.  Finally, it should not break
  * the tag value ranges covered by case-clauses in a switch-case.
@@ -361,159 +306,106 @@ typedef struct {
 
 /* setters */
 #define DUK_TVAL_SET_UNDEFINED(tv)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_UNDEFINED; \
+		(tv)->t = DUK_TAG_UNDEFINED; \
 	} while (0)
 
 #define DUK_TVAL_SET_UNUSED(tv)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_UNUSED; \
+		(tv)->t = DUK_TAG_UNUSED; \
 	} while (0)
 
 #define DUK_TVAL_SET_NULL(tv)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_NULL; \
+		(tv)->t = DUK_TAG_NULL; \
 	} while (0)
 
 #define DUK_TVAL_SET_BOOLEAN(tv,val)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_BOOLEAN; \
-		duk__tv->v.i = (duk_small_int_t) (val); \
+		(tv)->t = DUK_TAG_BOOLEAN; \
+		(tv)->v.i = (val); \
 	} while (0)
 
 #if defined(DUK_USE_FASTINT)
 #define DUK_TVAL_SET_DOUBLE(tv,val)  do { \
-		duk_tval *duk__tv; \
-		duk_double_t duk__dblval; \
-		duk__dblval = (val); \
-		DUK_ASSERT_DOUBLE_IS_NORMALIZED(duk__dblval); /* nop for unpacked duk_tval */ \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_NUMBER; \
-		duk__tv->v.d = duk__dblval; \
+		(tv)->t = DUK__TAG_NUMBER; \
+		(tv)->v.d = (val); \
 	} while (0)
-#define DUK_TVAL_SET_I48(tv,val)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_FASTINT; \
-		duk__tv->v.fi = (val); \
+#define DUK_TVAL_SET_FASTINT(tv,val)  do { \
+		(tv)->t = DUK_TAG_FASTINT; \
+		(tv)->v.fi = (val); \
 	} while (0)
-#define DUK_TVAL_SET_U32(tv,val)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_FASTINT; \
-		duk__tv->v.fi = (duk_int64_t) (val); \
+#define DUK_TVAL_SET_FASTINT_U32(tv,val)  do { \
+		(tv)->t = DUK_TAG_FASTINT; \
+		(tv)->v.fi = (duk_int64_t) (val); \
 	} while (0)
-#define DUK_TVAL_SET_I32(tv,val)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_FASTINT; \
-		duk__tv->v.fi = (duk_int64_t) (val); \
+#define DUK_TVAL_SET_FASTINT_I32(tv,val)  do { \
+		(tv)->t = DUK_TAG_FASTINT; \
+		(tv)->v.fi = (duk_int64_t) (val); \
 	} while (0)
-#define DUK_TVAL_SET_NUMBER_CHKFAST_FAST(tv,d) \
-	duk_tval_set_number_chkfast_fast((tv), (d))
-#define DUK_TVAL_SET_NUMBER_CHKFAST_SLOW(tv,d) \
-	duk_tval_set_number_chkfast_slow((tv), (d))
+#define DUK_TVAL_SET_NUMBER_CHKFAST(tv,d) \
+	duk_tval_set_number_chkfast((tv), (d))
 #define DUK_TVAL_SET_NUMBER(tv,val) \
 	DUK_TVAL_SET_DOUBLE((tv), (val))
-#define DUK_TVAL_CHKFAST_INPLACE_FAST(tv)  do { \
+#define DUK_TVAL_CHKFAST_INPLACE(v)  do { \
 		duk_tval *duk__tv; \
 		duk_double_t duk__d; \
-		duk__tv = (tv); \
+		duk__tv = (v); \
 		if (DUK_TVAL_IS_DOUBLE(duk__tv)) { \
 			duk__d = DUK_TVAL_GET_DOUBLE(duk__tv); \
-			DUK_TVAL_SET_NUMBER_CHKFAST_FAST(duk__tv, duk__d); \
+			DUK_TVAL_SET_NUMBER_CHKFAST(duk__tv, duk__d); \
 		} \
 	} while (0)
-#define DUK_TVAL_CHKFAST_INPLACE_SLOW(tv)  do { \
-		duk_tval *duk__tv; \
-		duk_double_t duk__d; \
-		duk__tv = (tv); \
-		if (DUK_TVAL_IS_DOUBLE(duk__tv)) { \
-			duk__d = DUK_TVAL_GET_DOUBLE(duk__tv); \
-			DUK_TVAL_SET_NUMBER_CHKFAST_SLOW(duk__tv, duk__d); \
-		} \
-	} while (0)
-#else  /* DUK_USE_FASTINT */
+#else
 #define DUK_TVAL_SET_DOUBLE(tv,d) \
 	DUK_TVAL_SET_NUMBER((tv), (d))
-#define DUK_TVAL_SET_I48(tv,val) \
+#define DUK_TVAL_SET_FASTINT(tv,val) \
 	DUK_TVAL_SET_NUMBER((tv), (duk_double_t) (val))  /* XXX: fast int-to-double */
-#define DUK_TVAL_SET_U32(tv,val) \
+#define DUK_TVAL_SET_FASTINT_U32(tv,val) \
 	DUK_TVAL_SET_NUMBER((tv), (duk_double_t) (val))
-#define DUK_TVAL_SET_I32(tv,val) \
+#define DUK_TVAL_SET_FASTINT_I32(tv,val) \
 	DUK_TVAL_SET_NUMBER((tv), (duk_double_t) (val))
 #define DUK_TVAL_SET_NUMBER(tv,val)  do { \
-		duk_tval *duk__tv; \
-		duk_double_t duk__dblval; \
-		duk__dblval = (val); \
-		DUK_ASSERT_DOUBLE_IS_NORMALIZED(duk__dblval); /* nop for unpacked duk_tval */ \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_NUMBER; \
-		duk__tv->v.d = duk__dblval; \
+		(tv)->t = DUK__TAG_NUMBER; \
+		(tv)->v.d = (val); \
 	} while (0)
-#define DUK_TVAL_SET_NUMBER_CHKFAST_FAST(tv,d) \
+#define DUK_TVAL_SET_NUMBER_CHKFAST(tv,d) \
 	DUK_TVAL_SET_NUMBER((tv), (d))
-#define DUK_TVAL_SET_NUMBER_CHKFAST_SLOW(tv,d) \
-	DUK_TVAL_SET_NUMBER((tv), (d))
-#define DUK_TVAL_CHKFAST_INPLACE_FAST(tv)  do { } while (0)
-#define DUK_TVAL_CHKFAST_INPLACE_SLOW(tv)  do { } while (0)
+#define DUK_TVAL_CHKFAST_INPLACE(v)  do { } while (0)
 #endif  /* DUK_USE_FASTINT */
 
-#define DUK_TVAL_SET_FASTINT(tv,i) \
-	DUK_TVAL_SET_I48((tv), (i))  /* alias */
-
 #define DUK_TVAL_SET_POINTER(tv,hptr)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_POINTER; \
-		duk__tv->v.voidptr = (hptr); \
+		(tv)->t = DUK_TAG_POINTER; \
+		(tv)->v.voidptr = (hptr); \
 	} while (0)
 
 #define DUK_TVAL_SET_LIGHTFUNC(tv,fp,flags)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_LIGHTFUNC; \
-		duk__tv->v_extra = (flags); \
-		duk__tv->v.lightfunc = (duk_c_function) (fp); \
+		(tv)->t = DUK_TAG_LIGHTFUNC; \
+		(tv)->v_extra = (flags); \
+		(tv)->v.lightfunc = (duk_c_function) (fp); \
 	} while (0)
 
 #define DUK_TVAL_SET_STRING(tv,hptr)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_STRING; \
-		duk__tv->v.hstring = (hptr); \
+		(tv)->t = DUK_TAG_STRING; \
+		(tv)->v.hstring = (hptr); \
 	} while (0)
 
 #define DUK_TVAL_SET_OBJECT(tv,hptr)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_OBJECT; \
-		duk__tv->v.hobject = (hptr); \
+		(tv)->t = DUK_TAG_OBJECT; \
+		(tv)->v.hobject = (hptr); \
 	} while (0)
 
 #define DUK_TVAL_SET_BUFFER(tv,hptr)  do { \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_BUFFER; \
-		duk__tv->v.hbuffer = (hptr); \
+		(tv)->t = DUK_TAG_BUFFER; \
+		(tv)->v.hbuffer = (hptr); \
 	} while (0)
 
 #define DUK_TVAL_SET_NAN(tv)  do { \
 		/* in non-packed representation we don't care about which NaN is used */ \
-		duk_tval *duk__tv; \
-		duk__tv = (tv); \
-		duk__tv->t = DUK_TAG_NUMBER; \
-		duk__tv->v.d = DUK_DOUBLE_NAN; \
+		(tv)->t = DUK__TAG_NUMBER; \
+		(tv)->v.d = DUK_DOUBLE_NAN; \
 	} while (0)
 
-#define DUK_TVAL_SET_TVAL(tv,x)            do { *(tv) = *(x); } while (0)
+#define DUK_TVAL_SET_TVAL(v,x)             do { *(v) = *(x); } while (0)
 
 /* getters */
-#define DUK_TVAL_GET_BOOLEAN(tv)           ((duk_small_uint_t) (tv)->v.i)
+#define DUK_TVAL_GET_BOOLEAN(tv)           ((tv)->v.i)
 #if defined(DUK_USE_FASTINT)
 #define DUK_TVAL_GET_DOUBLE(tv)            ((tv)->v.d)
 #define DUK_TVAL_GET_FASTINT(tv)           ((tv)->v.fi)
@@ -540,7 +432,7 @@ typedef struct {
 		(out_fp) = (tv)->v.lightfunc; \
 	} while (0)
 #define DUK_TVAL_GET_LIGHTFUNC_FUNCPTR(tv) ((tv)->v.lightfunc)
-#define DUK_TVAL_GET_LIGHTFUNC_FLAGS(tv)   ((duk_small_uint_t) ((tv)->v_extra))
+#define DUK_TVAL_GET_LIGHTFUNC_FLAGS(tv)   ((duk_uint32_t) ((tv)->v_extra))
 #define DUK_TVAL_GET_STRING(tv)            ((tv)->v.hstring)
 #define DUK_TVAL_GET_OBJECT(tv)            ((tv)->v.hobject)
 #define DUK_TVAL_GET_BUFFER(tv)            ((tv)->v.hbuffer)
@@ -555,13 +447,13 @@ typedef struct {
 #define DUK_TVAL_IS_BOOLEAN_TRUE(tv)       (((tv)->t == DUK_TAG_BOOLEAN) && ((tv)->v.i != 0))
 #define DUK_TVAL_IS_BOOLEAN_FALSE(tv)      (((tv)->t == DUK_TAG_BOOLEAN) && ((tv)->v.i == 0))
 #if defined(DUK_USE_FASTINT)
-#define DUK_TVAL_IS_DOUBLE(tv)             ((tv)->t == DUK_TAG_NUMBER)
+#define DUK_TVAL_IS_DOUBLE(tv)             ((tv)->t == DUK__TAG_NUMBER)
 #define DUK_TVAL_IS_FASTINT(tv)            ((tv)->t == DUK_TAG_FASTINT)
-#define DUK_TVAL_IS_NUMBER(tv)             ((tv)->t == DUK_TAG_NUMBER || \
+#define DUK_TVAL_IS_NUMBER(tv)             ((tv)->t == DUK__TAG_NUMBER || \
                                             (tv)->t == DUK_TAG_FASTINT)
 #else
-#define DUK_TVAL_IS_NUMBER(tv)             ((tv)->t == DUK_TAG_NUMBER)
-#define DUK_TVAL_IS_DOUBLE(tv)             DUK_TVAL_IS_NUMBER((tv))
+#define DUK_TVAL_IS_NUMBER(tv)             ((tv)->t == DUK__TAG_NUMBER)
+#define DUK_TVAL_IS_DOUBLE(v)              DUK_TVAL_IS_NUMBER((v))
 #endif  /* DUK_USE_FASTINT */
 #define DUK_TVAL_IS_POINTER(tv)            ((tv)->t == DUK_TAG_POINTER)
 #define DUK_TVAL_IS_LIGHTFUNC(tv)          ((tv)->t == DUK_TAG_LIGHTFUNC)
@@ -592,24 +484,19 @@ DUK_INTERNAL_DECL duk_double_t duk_tval_get_number_unpacked_fastint(duk_tval *tv
  *  Convenience (independent of representation)
  */
 
-#define DUK_TVAL_SET_BOOLEAN_TRUE(tv)        DUK_TVAL_SET_BOOLEAN((tv), 1)
-#define DUK_TVAL_SET_BOOLEAN_FALSE(tv)       DUK_TVAL_SET_BOOLEAN((tv), 0)
-
-#define DUK_TVAL_STRING_IS_SYMBOL(tv) \
-	DUK_HSTRING_HAS_SYMBOL(DUK_TVAL_GET_STRING((tv)))
+#define DUK_TVAL_SET_BOOLEAN_TRUE(v)        DUK_TVAL_SET_BOOLEAN(v, 1)
+#define DUK_TVAL_SET_BOOLEAN_FALSE(v)       DUK_TVAL_SET_BOOLEAN(v, 0)
 
 /* Lightfunc flags packing and unpacking. */
-/* Sign extend: 0x0000##00 -> 0x##000000 -> sign extend to 0xssssss##.
- * Avoid signed shifts due to portability limitations.
- */
+/* Sign extend: 0x0000##00 -> 0x##000000 -> sign extend to 0xssssss## */
 #define DUK_LFUNC_FLAGS_GET_MAGIC(lf_flags) \
-	((duk_int32_t) (duk_int8_t) (((duk_uint16_t) (lf_flags)) >> 8))
+	((((duk_int32_t) (lf_flags)) << 16) >> 24)
 #define DUK_LFUNC_FLAGS_GET_LENGTH(lf_flags) \
-	(((lf_flags) >> 4) & 0x0fU)
+	(((lf_flags) >> 4) & 0x0f)
 #define DUK_LFUNC_FLAGS_GET_NARGS(lf_flags) \
-	((lf_flags) & 0x0fU)
+	((lf_flags) & 0x0f)
 #define DUK_LFUNC_FLAGS_PACK(magic,length,nargs) \
-	((((duk_small_uint_t) (magic)) & 0xffU) << 8) | ((length) << 4) | (nargs)
+	(((magic) & 0xff) << 8) | ((length) << 4) | (nargs)
 
 #define DUK_LFUNC_NARGS_VARARGS             0x0f   /* varargs marker */
 #define DUK_LFUNC_NARGS_MIN                 0x00
@@ -621,12 +508,11 @@ DUK_INTERNAL_DECL duk_double_t duk_tval_get_number_unpacked_fastint(duk_tval *tv
 
 /* fastint constants etc */
 #if defined(DUK_USE_FASTINT)
-#define DUK_FASTINT_MIN           (DUK_I64_CONSTANT(-0x800000000000))
-#define DUK_FASTINT_MAX           (DUK_I64_CONSTANT(0x7fffffffffff))
+#define DUK_FASTINT_MIN           (-0x800000000000LL)
+#define DUK_FASTINT_MAX           0x7fffffffffffLL
 #define DUK_FASTINT_BITS          48
 
-DUK_INTERNAL_DECL void duk_tval_set_number_chkfast_fast(duk_tval *tv, duk_double_t x);
-DUK_INTERNAL_DECL void duk_tval_set_number_chkfast_slow(duk_tval *tv, duk_double_t x);
+DUK_INTERNAL_DECL void duk_tval_set_number_chkfast(duk_tval *tv, duk_double_t x);
 #endif
 
 #endif  /* DUK_TVAL_H_INCLUDED */

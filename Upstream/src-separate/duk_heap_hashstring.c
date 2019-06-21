@@ -13,7 +13,7 @@
  *  with real world inputs).  Unless the hash is cryptographic, it's always
  *  possible to craft inputs with maximal hash collisions.
  *
- *  NOTE: The hash algorithms must match tools/dukutil.py:duk_heap_hashstring()
+ *  NOTE: The hash algorithms must match src/dukutil.py:duk_heap_hashstring()
  *  for ROM string support!
  */
 
@@ -80,6 +80,10 @@ DUK_INTERNAL duk_uint32_t duk_heap_hashstring(duk_heap *heap, const duk_uint8_t 
 #endif
 	return hash;
 }
+
+#undef DUK__STRHASH_SHORTSTRING
+#undef DUK__STRHASH_MEDIUMSTRING
+#undef DUK__STRHASH_BLOCKSIZE
 #else  /* DUK_USE_STRHASH_DENSE */
 DUK_INTERNAL duk_uint32_t duk_heap_hashstring(duk_heap *heap, const duk_uint8_t *str, duk_size_t len) {
 	duk_uint32_t hash;

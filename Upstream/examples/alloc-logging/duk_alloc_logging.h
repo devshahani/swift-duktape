@@ -1,4 +1,4 @@
-#if !defined(DUK_ALLOC_LOGGING_H_INCLUDED)
+#ifndef DUK_ALLOC_LOGGING_H_INCLUDED
 #define DUK_ALLOC_LOGGING_H_INCLUDED
 
 #include "duktape.h"
