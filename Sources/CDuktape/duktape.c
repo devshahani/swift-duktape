@@ -2726,6 +2726,17 @@ typedef duk_uint32_t duk_instr_t;
 
 #ifndef DUK_LEXER_H_INCLUDED
 #define DUK_LEXER_H_INCLUDED
+#endif
+
+#line 1 "duk_module_node.h"
+/*
+ *  Module node defines.
+ */
+
+#ifndef DUK_MODULE_NODE_H_INCLUDED
+#define DUK_MODULE_NODE_H_INCLUDED
+
+
 
 typedef void (*duk_re_range_callback)(void *user, duk_codepoint_t r1, duk_codepoint_t r2, duk_bool_t direct);
 
